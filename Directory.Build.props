@@ -12,13 +12,12 @@
   <PropertyGroup Condition="'$(CI)' == 'true'">
     <ClassLibraryTargetFrameworks>$(DefaultTargetFrameworks)</ClassLibraryTargetFrameworks>
     <TestTargetFrameworks>$(DefaultTargetFrameworks)</TestTargetFrameworks>
-    <BenchmarkTargetFramework>$(DefaultTargetFramework)</BenchmarkTargetFramework>
+    <SampleTargetFramework>$(DefaultTargetFramework)</SampleTargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(CI)' != 'true'">
     <ClassLibraryTargetFrameworks>$(DefaultTargetFramework)</ClassLibraryTargetFrameworks>
     <TestTargetFrameworks>$(DefaultTargetFramework)</TestTargetFrameworks>
-    <BenchmarkTargetFramework>$(DefaultTargetFramework)</BenchmarkTargetFramework>
     <SampleTargetFramework>$(DefaultTargetFramework)</SampleTargetFramework>
   </PropertyGroup>
 
