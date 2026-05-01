@@ -22,10 +22,16 @@ var extC = new long[] { Rows, Cols };
 // ── Host data ─────────────────────────────────────────────────────────────────
 // A = identity, B = index+1  →  D should equal B
 var hostA = new float[Rows * Inner];
-for (int i = 0; i < Rows; i++) hostA[i * Inner + i] = 1f;
+for (int i = 0; i < Rows; i++)
+{
+    hostA[i * Inner + i] = 1f;
+}
 
 var hostB = new float[Inner * Cols];
-for (int i = 0; i < Inner * Cols; i++) hostB[i] = i + 1f;
+for (int i = 0; i < Inner * Cols; i++)
+{
+    hostB[i] = i + 1f;
+}
 
 await using var stream = new CudaStream();
 using var a = new DeviceBuffer<float>(Rows * Inner);
@@ -55,14 +61,20 @@ for (int row = 0; row < Rows; row++)
 {
     Console.Write("  [");
     for (int col = 0; col < Cols; col++)
+    {
         Console.Write($" {result[row * Cols + col],5:F1}");
+    }
+
     Console.WriteLine(" ]");
 }
 
 // Verify against expected (B)
 double maxErr = 0;
 for (int i = 0; i < Rows * Cols; i++)
+{
     maxErr = Math.Max(maxErr, Math.Abs(result[i] - hostB[i]));
+}
+
 Console.WriteLine($"Max error vs expected: {maxErr:E3}");
 
 Console.WriteLine("Tensor sample completed successfully.");

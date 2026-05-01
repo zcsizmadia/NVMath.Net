@@ -29,15 +29,24 @@ const int M = 4, N = 4, K = 4;
 
 // A = identity
 var hostA = new float[M * K];
-for (int i = 0; i < M; i++) hostA[i * K + i] = 1f;
+for (int i = 0; i < M; i++)
+{
+    hostA[i * K + i] = 1f;
+}
 
 // B = row index + 1
 var hostB = new float[K * N];
-for (int i = 0; i < K * N; i++) hostB[i] = i + 1f;
+for (int i = 0; i < K * N; i++)
+{
+    hostB[i] = i + 1f;
+}
 
 // D = checkerboard values
 var hostD = new float[K * N];
-for (int i = 0; i < K * N; i++) hostD[i] = (i % 4) + 1f;
+for (int i = 0; i < K * N; i++)
+{
+    hostD[i] = (i % 4) + 1f;
+}
 
 // ═════════════════════════════════════════════════════════════════════════════
 // Pattern 1 — Linear chain on a single stream

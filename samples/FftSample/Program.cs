@@ -2,8 +2,10 @@
 // Requires a CUDA-capable GPU at runtime.
 
 using System.Numerics;
+
 using NVMathNet;
-using FftPlan = NVMath.Fft.Fft;
+
+using FftPlan = NVMathNet.Fft.Fft;
 
 Console.WriteLine("=== NVMath.Net FFT Sample ===");
 
@@ -11,23 +13,25 @@ Console.WriteLine("=== NVMath.Net FFT Sample ===");
 const int N = 512;
 var host = new Complex[N];
 for (int i = 0; i < N; i++)
+{
     host[i] = new Complex(Math.Sin(2 * Math.PI * i / N), 0);
+}
 
 await using var stream = new CudaStream();
 using var buf = new DeviceBuffer<Complex>(N);
 buf.CopyFrom(host);
 
-// Forward FFT
-using var fwd = await FftPlan.FftAsync(buf, new long[] { N }, stream: stream);
+// Forward FFT → produces new output buffer
+using var fwd = await FftPlan.FftAsync(buf, [N], stream: stream);
 await stream.SynchronizeAsync();
 Console.WriteLine("Forward FFT done.");
 
-// Inverse FFT (in-place)
-using var inv = await FftPlan.IFftAsync(buf, new long[] { N }, stream: stream);
+// Inverse FFT on the forward result
+using var inv = await FftPlan.IFftAsync(fwd, [N], stream: stream);
 await stream.SynchronizeAsync();
 
-// Normalise
-var result = buf.ToArray();
+// Normalise and check round-trip
+var result = inv.ToArray();
 double maxErr = 0;
 for (int i = 0; i < N; i++)
 {
@@ -40,17 +44,24 @@ Console.WriteLine($"Round-trip max error: {maxErr:E3}");
 const int Batch = 16;
 var batchHost = new Complex[N * Batch];
 for (int b = 0; b < Batch; b++)
-for (int i = 0; i < N; i++)
-    batchHost[b * N + i] = new Complex(Math.Cos(2 * Math.PI * i / N * (b + 1)), 0);
+{
+    for (int i = 0; i < N; i++)
+    {
+        batchHost[b * N + i] = new Complex(Math.Cos(2 * Math.PI * i / N * (b + 1)), 0);
+    }
+}
 
 using var batchBuf = new DeviceBuffer<Complex>(N * Batch);
 batchBuf.CopyFrom(batchHost);
 
-using var batchFft = new FftPlan(new long[] { N },
-    options: new NVMath.Fft.FftOptions { },
+// Shape includes the batch dimension: [Batch, N]
+using var batchFft = new FftPlan([Batch, N],
+    axes: [1],                                   // FFT over the last axis only
+    options: new NVMathNet.Fft.FftOptions { },
     stream: stream);
 batchFft.Plan();
-batchFft.Execute(NVMath.Fft.FftDirection.Forward);
+batchFft.ResetOperand(batchBuf.PointerAsInt, batchBuf.PointerAsInt); // in-place
+batchFft.Execute(NVMathNet.Fft.FftDirection.Forward);
 await stream.SynchronizeAsync();
 Console.WriteLine($"Batch FFT ({Batch}×{N}) done.");
 
