@@ -1,6 +1,6 @@
 ﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
-    <TargetFrameworks>$(ClassLibraryTargetFrameworks)</TargetFrameworks>
+    <TargetFrameworks>$(DefaultTargetFrameworks)</TargetFrameworks>
     <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
     <IsPackable>true</IsPackable>
     <RootNamespace>NVMathNet</RootNamespace>
@@ -11,7 +11,7 @@
     <PackageId>NVMath.Net</PackageId>
     <Authors>Zoltan Csizmadia</Authors>
     <Copyright>Copyright (c) Zoltan Csizmadia. All rights reserved.</Copyright>
-    <Description>NVIDIA Math C# Library</Description>
+    <Description>NVIDIA Math GPU accelerated C# Library</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
     <PackageTags>cuda;nvidia;math;gpu</PackageTags>
     <PackageProjectUrl>https://github.com/zcsizmadia/NVMath.Net</PackageProjectUrl>

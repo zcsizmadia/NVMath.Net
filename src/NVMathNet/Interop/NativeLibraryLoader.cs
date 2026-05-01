@@ -14,7 +14,11 @@ public static class NativeLibraryLoader
 {
     private static readonly Dictionary<string, nint> _handles = [];
     private static readonly HashSet<string> _addedDirs = new(StringComparer.OrdinalIgnoreCase);
+#if NET9_0_OR_GREATER    
     private static readonly Lock _lock = new();
+#else
+    private static readonly object _lock = new();
+#endif
 
     /// <summary>
     /// Returns a function pointer for <paramref name="symbol"/> inside
