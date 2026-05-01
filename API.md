@@ -4,14 +4,14 @@
 
 | Namespace | Purpose |
 |---|---|
-| [`NVMathNet`](docs/api/core.md) | Core CUDA infrastructure (device, stream, event, buffers, multi-GPU) |
-| [`NVMathNet.Fft`](docs/api/fft.md) | cuFFT wrapper |
-| [`NVMathNet.LinAlg`](docs/api/linalg.md) | cuBLASLt matrix multiplication, GEMM, structured matrices |
-| [`NVMathNet.Solver`](docs/api/solver.md) | cuSOLVER dense solver (LU, Cholesky, SVD, eigenvalues) |
-| [`NVMathNet.Rand`](docs/api/rand.md) | cuRAND random number generation |
-| [`NVMathNet.Sparse`](docs/api/sparse.md) | cuSPARSE sparse linear algebra |
-| [`NVMathNet.Tensor`](docs/api/tensor.md) | cuTENSOR v2 tensor contractions and element-wise operations |
-| [`NVMathNet.Interop`](docs/api/interop.md) | Raw P/Invoke bindings (internal use) |
+| [`NVMathNet`](docs/api/Core.md) | Core CUDA infrastructure (device, stream, event, buffers, multi-GPU) |
+| [`NVMathNet.Fft`](docs/api/Fft.md) | cuFFT wrapper |
+| [`NVMathNet.LinAlg`](docs/api/Linalg.md) | cuBLASLt matrix multiplication, GEMM, structured matrices |
+| [`NVMathNet.Solver`](docs/api/Solver.md) | cuSOLVER dense solver (LU, Cholesky, SVD, eigenvalues) |
+| [`NVMathNet.Rand`](docs/api/Rand.md) | cuRAND random number generation |
+| [`NVMathNet.Sparse`](docs/api/Sparse.md) | cuSPARSE sparse linear algebra |
+| [`NVMathNet.Tensor`](docs/api/Tensor.md) | cuTENSOR v2 tensor contractions and element-wise operations |
+| [`NVMathNet.Interop`](docs/api/Interop.md) | Raw P/Invoke bindings (internal use) |
 
 ## Quick Links
 
