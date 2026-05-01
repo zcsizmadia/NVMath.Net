@@ -1,2 +1,0 @@
-﻿// TUnit test settings
-
