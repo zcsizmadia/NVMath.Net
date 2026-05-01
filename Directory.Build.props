@@ -1,12 +1,16 @@
 <Project>
 
   <PropertyGroup>
+    <Version>0.9.0</Version>
+  </PropertyGroup>
+
+  <PropertyGroup>
     <DefaultTargetFrameworks>net8.0;net9.0;net10.0</DefaultTargetFrameworks>
     <DefaultTargetFramework>net10.0</DefaultTargetFramework>
   </PropertyGroup>
 
   <PropertyGroup Condition="'$(CI)' == 'true'">
-    <ClassLibTargetFrameworks>$(DefaultTargetFrameworks)</ClassLibTargetFrameworks>
+    <ClassLibraryTargetFrameworks>$(DefaultTargetFrameworks)</ClassLibraryTargetFrameworks>
     <TestTargetFrameworks>$(DefaultTargetFrameworks)</TestTargetFrameworks>
     <BenchmarkTargetFramework>$(DefaultTargetFramework)</BenchmarkTargetFramework>
   </PropertyGroup>
@@ -25,9 +29,9 @@
     <IsPackable>false</IsPackable>
   </PropertyGroup>
 
-  <!-- Enable CS1591 (missing XML doc) for library projects that opt in via GenerateDocumentationFile -->
+  <!-- Treat CS1591 (missing XML doc) as error for library projects that opt in via GenerateDocumentationFile -->
   <PropertyGroup Condition="'$(GenerateDocumentationFile)' == 'true'">
-    <Warn>CS1591</Warn>
+    <WarningsAsErrors>CS1591</WarningsAsErrors>
   </PropertyGroup>
 
 </Project>

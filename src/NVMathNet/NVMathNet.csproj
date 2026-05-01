@@ -1,0 +1,27 @@
+﻿<Project Sdk="Microsoft.NET.Sdk">
+  <PropertyGroup>
+    <TargetFrameworks>$(ClassLibraryTargetFrameworks)</TargetFrameworks>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <IsPackable>true</IsPackable>
+    <RootNamespace>NVMathNet</RootNamespace>
+    <AssemblyName>NVMath.Net</AssemblyName>
+    <GenerateDocumentationFile>true</GenerateDocumentationFile>
+
+    <!-- Package metadata -->
+    <PackageId>NVMath.Net</PackageId>
+    <Authors>Zoltan Csizmadia</Authors>
+    <Copyright>Copyright (c) Zoltan Csizmadia. All rights reserved.</Copyright>
+    <Description>NVIDIA Math C# Library</Description>
+    <PackageLicenseExpression>MIT</PackageLicenseExpression>
+    <PackageTags>cuda;nvidia;math;gpu</PackageTags>
+    <PackageProjectUrl>https://github.com/zcsizmadia/NVMath.Net</PackageProjectUrl>
+    <RepositoryUrl>https://github.com/zcsizmadia/NVMath.Net.git</RepositoryUrl>
+    <RepositoryType>git</RepositoryType>
+    <PackageReadmeFile>README.md</PackageReadmeFile>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <None Include="../../README.md" Pack="true" PackagePath="" />
+    <None Include="../../LICENSE" Pack="true" PackagePath="" />
+  </ItemGroup>
+</Project>

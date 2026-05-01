@@ -46,7 +46,8 @@ Console.WriteLine($"SpMV result: [{string.Join(", ", result)}]");   // [4, 5, 6]
 //      [ 5 6 ]                  [ 5 6 ]
 
 int denseN = 2;
-var hostB = new float[] { 1f, 2f, 3f, 4f, 5f, 6f };
+// cuSPARSE SpMM uses column-major dense layout
+var hostB = new float[] { 1f, 3f, 5f, 2f, 4f, 6f }; // col-major
 
 using var b = new DeviceBuffer<float>(rows * denseN);
 using var c = new DeviceBuffer<float>(rows * denseN);
@@ -57,8 +58,10 @@ await SparseLinearAlgebra.SpMMAsync<float>(matrix, b, c, denseN,
 await stream.SynchronizeAsync();
 
 var cResult = c.ToArray();
-Console.WriteLine("SpMM result (row-major 3×2):");
+Console.WriteLine("SpMM result (3×2):");
 for (int r = 0; r < rows; r++)
-    Console.WriteLine($"  [{cResult[r * denseN],4:F0}, {cResult[r * denseN + 1],4:F0}]");
+{
+    Console.WriteLine($"  [{cResult[r],4:F0}, {cResult[r + rows],4:F0}]"); // col-major read
+}
 
 Console.WriteLine("All Sparse samples completed successfully.");

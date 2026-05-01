@@ -124,7 +124,7 @@ csharp_style_prefer_readonly_struct = true:suggestion
 csharp_style_prefer_readonly_struct_member = true:suggestion
 
 # Code-block preferences
-csharp_prefer_braces = true:silent
+csharp_prefer_braces = true:warning
 csharp_prefer_simple_using_statement = true:suggestion
 csharp_style_namespace_declarations = file_scoped:suggestion
 csharp_style_prefer_method_group_conversion = true:silent
@@ -387,3 +387,12 @@ dotnet_naming_style.s_camelcase.required_suffix =
 dotnet_naming_style.s_camelcase.word_separator = 
 dotnet_naming_style.s_camelcase.capitalization = camel_case
 
+# Enable 'Remove unnecessary usings' rule
+dotnet_diagnostic.IDE0005.severity = warning
+
+# Naming rule violations
+dotnet_diagnostic.IDE1006.severity = silent
+
+# Sort usings while formatting
+dotnet_sort_system_directives_first = true
+dotnet_separate_import_directive_groups = true
