@@ -1,0 +1,15 @@
+<Solution>
+  <Folder Name="/samples/">
+    <Project Path="samples/ChainingSample/ChainingSample.csproj" />
+    <Project Path="samples/FftSample/FftSample.csproj" />
+    <Project Path="samples/MatmulSample/MatmulSample.csproj" />
+    <Project Path="samples/SparseSample/SparseSample.csproj" />
+    <Project Path="samples/TensorSample/TensorSample.csproj" />
+  </Folder>
+  <Folder Name="/src/">
+    <Project Path="src/NVMath.Net/NVMath.Net.csproj" />
+  </Folder>
+  <Folder Name="/tests/">
+    <Project Path="tests/NVMath.Net.Tests/NVMath.Net.Tests.csproj" />
+  </Folder>
+</Solution>

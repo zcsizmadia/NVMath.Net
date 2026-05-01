@@ -1,0 +1,11 @@
+{
+    "chat.tools.terminal.autoApprove": {
+        "dotnet new": true,
+        "dotnet sln": true,
+        "pushd": true,
+        "/^powershell -Command \"Get-Content 'c:\\\\OpenSource\\\\NVMath\\.Net\\\\src\\\\NVMath\\.Net\\\\Sparse\\\\SparseLinearAlgebra\\.cs' \\| Select-Object -First 190 \\| Set-Content 'c:\\\\OpenSource\\\\NVMath\\.Net\\\\src\\\\NVMath\\.Net\\\\Sparse\\\\SparseLinearAlgebra\\.cs'\"$/": {
+            "approve": true,
+            "matchCommandLine": true
+        }
+    }
+}

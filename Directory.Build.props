@@ -1,0 +1,33 @@
+<Project>
+
+  <PropertyGroup>
+    <DefaultTargetFrameworks>net8.0;net9.0;net10.0</DefaultTargetFrameworks>
+    <DefaultTargetFramework>net10.0</DefaultTargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(CI)' == 'true'">
+    <ClassLibTargetFrameworks>$(DefaultTargetFrameworks)</ClassLibTargetFrameworks>
+    <TestTargetFrameworks>$(DefaultTargetFrameworks)</TestTargetFrameworks>
+    <BenchmarkTargetFramework>$(DefaultTargetFramework)</BenchmarkTargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup Condition="'$(CI)' != 'true'">
+    <ClassLibraryTargetFrameworks>$(DefaultTargetFramework)</ClassLibraryTargetFrameworks>
+    <TestTargetFrameworks>$(DefaultTargetFramework)</TestTargetFrameworks>
+    <BenchmarkTargetFramework>$(DefaultTargetFramework)</BenchmarkTargetFramework>
+    <SampleTargetFramework>$(DefaultTargetFramework)</SampleTargetFramework>
+  </PropertyGroup>
+
+  <PropertyGroup>
+    <LangVersion>latest</LangVersion>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+  </PropertyGroup>
+
+  <!-- Enable CS1591 (missing XML doc) for library projects that opt in via GenerateDocumentationFile -->
+  <PropertyGroup Condition="'$(GenerateDocumentationFile)' == 'true'">
+    <Warn>CS1591</Warn>
+  </PropertyGroup>
+
+</Project>
