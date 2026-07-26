@@ -7,7 +7,7 @@
   <ItemGroup>
     <PackageVersion Include="TUnit" Version="1.44.39" />
     <PackageVersion Include="TUnit.Core" Version="1.61.0" />
-    <PackageVersion Include="TUnit.Assertions" Version="1.56.18" />
+    <PackageVersion Include="TUnit.Assertions" Version="1.61.38" />
   </ItemGroup>
 
 </Project>
