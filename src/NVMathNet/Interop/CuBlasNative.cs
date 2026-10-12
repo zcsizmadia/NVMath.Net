@@ -164,7 +164,7 @@ public enum CuBlasLtEpilogue : int
 /// <summary>
 /// Raw P/Invoke bindings for cuBLAS and cuBLASLt.
 /// </summary>
-public static unsafe class CuBlasNative
+public static unsafe partial class CuBlasNative
 {
     private const string LibWindows    = "cublas64_13.dll";
     private const string LibLinux      = "libcublas.so.13";

@@ -248,4 +248,143 @@ public sealed class FftTests
             await Assert.That(Math.Abs(back[i] / N - real[i])).IsLessThan(1e-9);
         }
     }
+
+    // ── Normalization ────────────────────────────────────────────────────────
+
+    private static async Task<Complex[]> RoundTripC2C(long[] shape, int[] axes, Complex[] host, FftNormalization norm)
+    {
+        var opts = new FftOptions { FftType = FftType.C2C, Blocking = true, Normalization = norm };
+        using var input = new DeviceBuffer<Complex>(host.Length);
+        using var freq = new DeviceBuffer<Complex>(host.Length);
+        using var back = new DeviceBuffer<Complex>(host.Length);
+        input.CopyFrom(host.AsSpan());
+
+        using var fwd = new FftPlan(shape, axes, opts, doublePrecision: true);
+        fwd.ResetOperand(input.PointerAsInt, freq.PointerAsInt);
+        await fwd.PlanAsync();
+        await fwd.ExecuteAsync(FftDirection.Forward);
+
+        using var inv = new FftPlan(shape, axes, opts, doublePrecision: true);
+        inv.ResetOperand(freq.PointerAsInt, back.PointerAsInt);
+        await inv.PlanAsync();
+        await inv.ExecuteAsync(FftDirection.Inverse);
+        return back.ToArray();
+    }
+
+    [Test]
+    public async Task Fft_Normalization_Backward_RoundTripNeedsNoManualScaling()
+    {
+        var host = RampSignal(64);
+        var back = await RoundTripC2C([64], [0], host, FftNormalization.Backward);
+        for (int i = 0; i < host.Length; i++)
+        {
+            await Assert.That((back[i] - host[i]).Magnitude).IsLessThan(1e-9);
+        }
+    }
+
+    [Test]
+    public async Task Fft_Normalization_None_RoundTripIsScaledByN()
+    {
+        var host = RampSignal(64);
+        var back = await RoundTripC2C([64], [0], host, FftNormalization.None);
+        await Assert.That((back[5] - host[5] * 64).Magnitude).IsLessThan(1e-7);
+    }
+
+    [Test]
+    public async Task Fft_Normalization_Orthonormal_PreservesEnergy_Double()
+    {
+        var host = RampSignal(128);
+        var freq = await RunC2C([128], [0], host);
+        double scaledEnergy;
+        {
+            var opts = new FftOptions { FftType = FftType.C2C, Blocking = true, Normalization = FftNormalization.Orthonormal };
+            using var input = new DeviceBuffer<Complex>(host.Length);
+            using var output = new DeviceBuffer<Complex>(host.Length);
+            input.CopyFrom(host.AsSpan());
+            using var fft = new FftPlan([128], [0], opts, doublePrecision: true);
+            fft.ResetOperand(input.PointerAsInt, output.PointerAsInt);
+            await fft.PlanAsync();
+            await fft.ExecuteAsync(FftDirection.Forward);
+            scaledEnergy = output.ToArray().Sum(c => c.Real * c.Real + c.Imaginary * c.Imaginary);
+        }
+
+        double inputEnergy = host.Sum(c => c.Real * c.Real + c.Imaginary * c.Imaginary);
+        await Assert.That(Math.Abs(scaledEnergy - inputEnergy) / inputEnergy).IsLessThan(1e-9);
+
+        // And the unscaled transform has N times the energy (sanity check of the baseline).
+        double rawEnergy = freq.Sum(c => c.Real * c.Real + c.Imaginary * c.Imaginary);
+        await Assert.That(Math.Abs(rawEnergy / inputEnergy - 128)).IsLessThan(1e-6);
+    }
+
+    [Test]
+    public async Task Fft_Normalization_Orthonormal_PreservesEnergy_Single()
+    {
+        const int N = 256;
+        float[] interleaved = new float[2 * N];
+        for (int i = 0; i < N; i++)
+        {
+            interleaved[2 * i] = MathF.Sin(i * 0.3f) + 0.01f * i;
+            interleaved[2 * i + 1] = MathF.Cos(i * 0.9f);
+        }
+
+        var opts = new FftOptions { FftType = FftType.C2C, Blocking = true, Normalization = FftNormalization.Orthonormal };
+        using var input = new DeviceBuffer<float>(2 * N);
+        using var output = new DeviceBuffer<float>(2 * N);
+        input.CopyFrom(interleaved.AsSpan());
+        using var fft = new FftPlan([N], [0], opts, doublePrecision: false);
+        fft.ResetOperand(input.PointerAsInt, output.PointerAsInt);
+        await fft.PlanAsync();
+        await fft.ExecuteAsync(FftDirection.Forward);
+
+        double inE = interleaved.Sum(v => (double)v * v);
+        double outE = output.ToArray().Sum(v => (double)v * v);
+        await Assert.That(Math.Abs(outE - inE) / inE).IsLessThan(1e-4);
+    }
+
+    [Test]
+    public async Task Fft_Normalization_Backward_LeadingAxisBatch_RoundTrips()
+    {
+        var host = RampSignal(24);
+        var back = await RoundTripC2C([8, 3], [0], host, FftNormalization.Backward);
+        for (int i = 0; i < host.Length; i++)
+        {
+            await Assert.That((back[i] - host[i]).Magnitude).IsLessThan(1e-9);
+        }
+    }
+
+    [Test]
+    public async Task Fft_Normalization_Backward_R2C_C2R_RecoversRealSignal()
+    {
+        const int Rows = 3, N = 16;
+        double[] real = new double[Rows * N];
+        for (int i = 0; i < real.Length; i++)
+        {
+            real[i] = Math.Sin(i * 0.37) + 0.05 * i;
+        }
+
+        using var input = new DeviceBuffer<double>(real.Length);
+        using var spectrum = new DeviceBuffer<Complex>(Rows * (N / 2 + 1));
+        using var recovered = new DeviceBuffer<double>(real.Length);
+        input.CopyFrom(real.AsSpan());
+
+        using (var fwd = new FftPlan([Rows, N], [1], new FftOptions { FftType = FftType.R2C, Blocking = true, Normalization = FftNormalization.Backward }, doublePrecision: true))
+        {
+            fwd.ResetOperand(input.PointerAsInt, spectrum.PointerAsInt);
+            await fwd.PlanAsync();
+            await fwd.ExecuteAsync(FftDirection.Forward);
+        }
+
+        using (var inv = new FftPlan([Rows, N], [1], new FftOptions { FftType = FftType.C2R, Blocking = true, Normalization = FftNormalization.Backward }, doublePrecision: true))
+        {
+            inv.ResetOperand(spectrum.PointerAsInt, recovered.PointerAsInt);
+            await inv.PlanAsync();
+            await inv.ExecuteAsync(FftDirection.Inverse);
+        }
+
+        double[] back = recovered.ToArray();
+        for (int i = 0; i < real.Length; i++)
+        {
+            await Assert.That(Math.Abs(back[i] - real[i])).IsLessThan(1e-9);
+        }
+    }
 }

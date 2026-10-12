@@ -6,6 +6,7 @@
 enum FftDirection { Forward = -1, Inverse = 1 }
 enum FftType { C2C, R2C, C2R }
 enum LastAxisParity { Even, Odd }
+enum FftNormalization { None, Backward, Forward, Orthonormal }
 ```
 
 ## `FftOptions`
@@ -17,6 +18,7 @@ enum LastAxisParity { Even, Odd }
 | `LastAxisParity` | `LastAxisParity` | `Even` | Parity of the last axis for R2C/C2R. |
 | `DeviceId` | `int` | `0` | GPU device index. |
 | `Blocking` | `bool` | `false` | Synchronise after execution. |
+| `Normalization` | `FftNormalization` | `None` | Output scaling: `None` (cuFFT behaviour), `Backward` (1/N on inverse), `Forward` (1/N on forward), `Orthonormal` (1/√N on both). R2C counts as forward and C2R as inverse. |
 
 ## `Fft` (class)
 
