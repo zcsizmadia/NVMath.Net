@@ -13,6 +13,7 @@ A .NET wrapper library for NVIDIA CUDA math libraries — cuFFT, cuBLASLt, cuBLA
 | cuFFT | 12.x (`cufft64_12.dll` / `libcufft.so.12`) |
 | cuSPARSE | 12.x (`cusparse64_12.dll` / `libcusparse.so.12`) |
 | cuTENSOR | 2.x (`cutensor.dll` / `libcutensor.so.2`) |
+| cuDSS (optional, for `SparseDirectSolver`) | 0.x (`cudss64_0.dll` / `libcudss.so.0`) |
 | cuSOLVER | 12.x (`cusolver64_12.dll` / `libcusolver.so.12`) |
 | cuRAND | 10.x (`curand64_10.dll` / `libcurand.so.10`) |
 | NVIDIA GPU | Compute capability 7.0+ recommended |

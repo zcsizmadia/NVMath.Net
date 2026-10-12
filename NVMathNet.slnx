@@ -1,6 +1,7 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/ChainingSample/ChainingSample.csproj" />
+    <Project Path="samples/DirectSolverSample/DirectSolverSample.csproj" />
     <Project Path="samples/FftSample/FftSample.csproj" />
     <Project Path="samples/MatmulSample/MatmulSample.csproj" />
     <Project Path="samples/RandSample/RandSample.csproj" />
