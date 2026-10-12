@@ -11,10 +11,10 @@
     <PackageId>NVMath.Net</PackageId>
     <Authors>Zoltan Csizmadia</Authors>
     <Copyright>Copyright (c) Zoltan Csizmadia. All rights reserved.</Copyright>
-    <Description>NVIDIA Math GPU accelerated C# Library</Description>
+    <Description>.NET wrapper for the NVIDIA CUDA math libraries (cuFFT, cuBLASLt, cuBLAS, cuSPARSE, cuDSS, cuTENSOR, cuSOLVER, cuRAND): GPU-accelerated FFT, matrix multiplication, sparse and dense linear algebra, tensor operations and random numbers. A C# counterpart to nvmath-python.</Description>
     <PackageLicenseExpression>MIT</PackageLicenseExpression>
-    <PackageTags>cuda;nvidia;math;gpu</PackageTags>
-    <PackageProjectUrl>https://github.com/zcsizmadia/NVMath.Net</PackageProjectUrl>
+    <PackageTags>cuda;nvidia;gpu;math;fft;cublas;cusparse;cutensor;cusolver;curand;cudss;linear-algebra;tensor;nvmath</PackageTags>
+    <PackageProjectUrl>https://zcsizmadia.github.io/NVMath.Net/</PackageProjectUrl>
     <RepositoryUrl>https://github.com/zcsizmadia/NVMath.Net.git</RepositoryUrl>
     <RepositoryType>git</RepositoryType>
     <PackageReadmeFile>README.md</PackageReadmeFile>

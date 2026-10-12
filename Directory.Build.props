@@ -1,12 +1,7 @@
 <Project>
 
   <PropertyGroup>
-    <Version>0.9.0</Version>
-  </PropertyGroup>
-
-  <PropertyGroup>
-    <DefaultTargetFrameworks>net8.0;net9.0;net10.0</DefaultTargetFrameworks>
-    <DefaultTargetFramework>net10.0</DefaultTargetFramework>
+    <Version>1.0.0</Version>
   </PropertyGroup>
 
   <PropertyGroup>
