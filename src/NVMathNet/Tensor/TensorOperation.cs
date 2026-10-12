@@ -80,6 +80,7 @@ public abstract class TensorOperation : IAsyncDisposable, IDisposable
         }
 
         _workspace = new Workspace((nuint)WorkspaceSize);
+        NVMathLog.Debug("Tensor", () => $"{GetType().Name} planned, workspace {WorkspaceSize} bytes.");
     }
 
     /// <summary>Validates that mode labels are unique and match the tensor rank.</summary>

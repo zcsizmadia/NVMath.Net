@@ -198,6 +198,7 @@ public sealed class Fft : IAsyncDisposable, IDisposable
             unsafe { CuFftNative.SetWorkArea(_plan, (void*)_workspacePtr); }
         }
 
+        NVMathLog.Debug("Fft", () => $"Planned {_fftType} shape [{string.Join(", ", _shape)}] axes [{string.Join(", ", _axes)}]: batch {batchSize}, workspace {_workspaceSize} bytes.");
         _signalSize = Product(n);
         _outputElements = batchSize * Product(outDims);
         _planned = true;

@@ -353,6 +353,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             _workspacePtr = _workspace.PointerAsInt;
         }
 
+        NVMathLog.Debug("Matmul", () => $"Planned {_m}x{_n}x{_k} (batch {_batchCount}): {count} candidate algorithm(s), workspace {maxWorkspace} bytes.");
         SelectAlgorithm(0);
         _planned = true;
     }
@@ -438,6 +439,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         }
 
         SelectAlgorithm(Array.IndexOf(times, times.Min()));
+        NVMathLog.Info("Matmul", () => $"Autotuned {_algoCount} candidate(s) over {iterations} iteration(s); selected #{SelectedAlgorithm} ({times[SelectedAlgorithm]:F3} ms): [{string.Join(", ", times.Select(t => t.ToString("F3")))}] ms.");
         return times;
     }
 

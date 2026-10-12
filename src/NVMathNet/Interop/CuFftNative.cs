@@ -194,7 +194,9 @@ public static unsafe class CuFftNative
         }
 
         string msg = $"cuFFT error {result} ({(int)result:X})";
-        throw new CuFftException((int)result, context is null ? msg : $"{context}: {msg}");
+        string full = context is null ? msg : $"{context}: {msg}";
+        NVMathLog.Error("cuFFT", full);
+        throw new CuFftException((int)result, full);
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
