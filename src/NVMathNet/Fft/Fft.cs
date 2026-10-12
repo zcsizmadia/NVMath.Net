@@ -51,7 +51,9 @@ public sealed class Fft : IAsyncDisposable, IDisposable
     /// </param>
     /// <param name="axes">
     /// The axes over which to perform the FFT.  <c>null</c> means all axes.
-    /// Must be contiguous and include either the first or last dimension.
+    /// Negative values count from the end. Must be ascending, contiguous and include
+    /// either the first or last dimension. Leading axes are supported through strided layouts.
+    /// For R2C the shape is the real input; for C2R it is the real output.
     /// </param>
     /// <param name="options">FFT options; <c>null</c> uses defaults.</param>
     /// <param name="stream">
@@ -80,7 +82,7 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         // Resolve axes
         _axes = axes is null
             ? [.. Enumerable.Range(0, shape.Length)]
-            : (int[])axes.Clone();
+            : NormalizeAxes(axes, shape.Length);
 
         // Resolve FFT type
         _fftType = _options.FftType ?? FftType.C2C;
@@ -138,18 +140,50 @@ public sealed class Fft : IAsyncDisposable, IDisposable
 
     private void BuildPlan()
     {
-        // Derive the FFT dimensions from the selected axes
+        // Derive the FFT dimensions from the selected axes (validated in the constructor)
         long[] n    = [.. _axes.Select(a => _shape[a])];
-        long   rank = n.Length;
+        int    rank = n.Length;
 
-        // For a simple contiguous layout the strides and distances follow from n
-        long batchSize = _shape.Aggregate(1L, (acc, s) => acc * s) / n.Aggregate(1L, (acc, s) => acc * s);
+        // Transform-axis extents of the input and output operands. R2C halves the
+        // last transform axis of the output; C2R halves it on the input.
+        long[] half = (long[])n.Clone();
+        half[^1] = n[^1] / 2 + 1;
+        long[] inDims  = _fftType == FftType.C2R ? half : n;
+        long[] outDims = _fftType == FftType.R2C ? half : n;
 
-        _workspaceSize = CuFftNative.MakePlanMany(
-            _plan, (int)rank, n,
-            inembed: null, istride: 1, idist: n.Aggregate(1L, (a, s) => a * s),
-            onembed: null, ostride: 1, odist: OutputDist(n),
-            _nativeType, batchSize);
+        // Axes are one contiguous block, so the remaining dimensions split into
+        // `outer` (before the block) and `inner` (after it).
+        long outer = 1, inner = 1;
+        for (int i = 0; i < _axes[0]; i++)
+        {
+            outer *= _shape[i];
+        }
+
+        for (int i = _axes[^1] + 1; i < _shape.Length; i++)
+        {
+            inner *= _shape[i];
+        }
+
+        long batchSize = outer * inner;
+        if (inner == 1)
+        {
+            // Trailing axes: each transform is contiguous, batches are packed back-to-back.
+            _workspaceSize = CuFftNative.MakePlanMany(
+                _plan, rank, n,
+                inembed: null, istride: 1, idist: Product(inDims),
+                onembed: null, ostride: 1, odist: Product(outDims),
+                _nativeType, batchSize);
+        }
+        else
+        {
+            // Leading axes (outer == 1): transform elements are `inner` apart and the
+            // `inner` batches are interleaved with a distance of one element.
+            _workspaceSize = CuFftNative.MakePlanMany(
+                _plan, rank, n,
+                inembed: inDims, istride: inner, idist: 1,
+                onembed: outDims, ostride: inner, odist: 1,
+                _nativeType, batchSize);
+        }
 
         // Allocate workspace
         if (_workspaceSize > 0)
@@ -161,14 +195,40 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         _planned = true;
     }
 
-    private long OutputDist(long[] n)
+    private static long Product(long[] dims) => dims.Aggregate(1L, (a, s) => a * s);
+
+    /// <summary>
+    /// Validates the transform axes: in range, strictly ascending, contiguous, and
+    /// covering either the first or the last tensor dimension (cuFFT can express
+    /// only a single batch stride).
+    /// </summary>
+    private static int[] NormalizeAxes(int[] axes, int rank)
     {
-        return _fftType switch
+        if (axes.Length == 0)
         {
-            FftType.R2C => n[..^1].Aggregate(1L, (a, s) => a * s) * (n[^1] / 2 + 1),
-            FftType.C2R => n.Aggregate(1L, (a, s) => a * s),      // output is real
-            _           => n.Aggregate(1L, (a, s) => a * s),
-        };
+            throw new ArgumentException("At least one FFT axis is required.", nameof(axes));
+        }
+
+        int[] result = [.. axes.Select(a => a < 0 ? a + rank : a)];
+        for (int i = 0; i < result.Length; i++)
+        {
+            if (result[i] < 0 || result[i] >= rank)
+            {
+                throw new ArgumentOutOfRangeException(nameof(axes), $"Axis {axes[i]} is out of range for a {rank}-D tensor.");
+            }
+
+            if (i > 0 && result[i] != result[i - 1] + 1)
+            {
+                throw new ArgumentException("FFT axes must be ascending and contiguous.", nameof(axes));
+            }
+        }
+
+        if (result[0] != 0 && result[^1] != rank - 1)
+        {
+            throw new NotSupportedException("FFT axes must include the first or the last dimension.");
+        }
+
+        return result;
     }
 
     // ── Operand management ────────────────────────────────────────────────────
@@ -363,7 +423,9 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         opts.FftType = FftType.R2C;
 
         // Compute half-spectrum output size: last axis shrinks to n/2+1
-        int[] resolvedAxes = axes ?? [.. Enumerable.Range(0, shape.Length)];
+        int[] resolvedAxes = axes is null
+            ? [.. Enumerable.Range(0, shape.Length)]
+            : NormalizeAxes(axes, shape.Length);
         long outputElements = ComputeR2COutputSize(shape, resolvedAxes);
 
         await using var fft = new Fft(shape, resolvedAxes, opts, stream, doublePrecision: false);

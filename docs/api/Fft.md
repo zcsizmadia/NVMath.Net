@@ -24,7 +24,7 @@ Stateful cuFFT plan wrapper. Implements `IAsyncDisposable`, `IDisposable`.
 
 | Member | Description |
 |---|---|
-| `Fft(long[] shape, int[]? axes = null, FftOptions? options = null, CudaStream? stream = null, bool doublePrecision = false)` | Creates a plan descriptor. `axes` selects which dimensions to transform (`null` = all). |
+| `Fft(long[] shape, int[]? axes = null, FftOptions? options = null, CudaStream? stream = null, bool doublePrecision = false)` | Creates a plan descriptor. `axes` selects which dimensions to transform (`null` = all); they must be ascending, contiguous and include the first or last dimension (negative values allowed). Batched trailing- and leading-axis layouts are supported. |
 | `Task PlanAsync(CancellationToken ct = default)` | Builds the cuFFT plan. |
 | `void Plan()` | Synchronous plan creation. |
 | `Task ExecuteAsync(FftDirection direction = Forward, CancellationToken ct = default)` | Executes the transform. |
