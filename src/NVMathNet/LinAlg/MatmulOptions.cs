@@ -135,6 +135,9 @@ public sealed class MatmulOptions
     /// </summary>
     public bool ConjugateTransposeB { get; set; }
 
+    /// <summary>A shallow copy, so a <see cref="Matmul"/> is not affected by later changes to the caller's object.</summary>
+    internal MatmulOptions Clone() => (MatmulOptions)MemberwiseClone();
+
     /// <summary>
     /// If <c>true</c> (default), execution waits for the GPU to finish before returning.
     /// Set to <c>false</c> for asynchronous overlapped execution.
