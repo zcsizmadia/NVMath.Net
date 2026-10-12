@@ -9,7 +9,7 @@ namespace NVMathNet.Rand;
 /// GPU random number generator backed by cuRAND. Wraps a cuRAND generator handle
 /// and provides methods to fill device buffers with random numbers.
 /// </summary>
-public sealed class CudaRandom : IDisposable
+public sealed partial class CudaRandom : IDisposable
 {
     private nint _generator;
     private readonly CudaStream? _stream;
@@ -27,6 +27,12 @@ public sealed class CudaRandom : IDisposable
         ulong seed = 0,
         CudaStream? stream = null)
     {
+        if (seed != 0 && rngType >= CuRandRngType.QuasiDefault)
+        {
+            throw new ArgumentException("Quasirandom generators are not seedable; use SetOffset instead.", nameof(seed));
+        }
+
+        RngType = rngType;
         _streamOwned = stream is null;
         _stream = stream ?? new CudaStream();
         _generator = CuRandNative.CreateGenerator(rngType);
