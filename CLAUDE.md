@@ -21,7 +21,7 @@ src/NVMathNet/          # Main library
   Interop/              # P/Invoke bindings (lazy-loaded via NativeLibraryLoader)
   Fft/                  # cuFFT wrapper
   LinAlg/               # cuBLASLt + cuBLAS wrappers (Matmul, TriangularSolve, SymmetricMultiply)
-  Sparse/               # cuSPARSE wrapper (CsrMatrix, SparseLinearAlgebra)
+  Sparse/               # cuSPARSE wrapper (CsrMatrix, SparseLinearAlgebra, SparseDirectSolver via cuDSS)
   Tensor/               # cuTENSOR wrapper (TensorContraction)
   Solver/               # cuSOLVER wrapper (DenseSolver)
   Rand/                 # cuRAND wrapper (CudaRandom)
@@ -96,6 +96,7 @@ Missing XML doc comments (`CS1591`) are treated as **errors** for library projec
 | cuSOLVER | `cusolver64_12.dll` | `libcusolver.so.12` | 12.x |
 | cuRAND | `curand64_10.dll` | `libcurand.so.10` | 10.x |
 | cuTENSOR | `cutensor.dll` | `libcutensor.so.2` | 2.x |
+| cuDSS | `cudss64_0.dll` | `libcudss.so.0` | 0.x |
 
 Native libraries are resolved via **`NativeLibraryLoader`** (lazy-loaded delegates — no `[DllImport]`). The native DLL directories must be on `PATH` (Windows) or `LD_LIBRARY_PATH` (Linux).
 

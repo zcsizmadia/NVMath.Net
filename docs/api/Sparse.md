@@ -49,3 +49,27 @@ Dense matrices passed to SpMM use **column-major** layout.
 The generic-API methods take scalars as `T` (matching the matrix element type); supported element types are `float`, `double` and `Half`.
 | `Task SpMVAsync<T>(CooMatrix<T> A, ...)` / `Task SpMVAsync<T>(BsrMatrix<T> A, ...)` | SpMV overloads for COO and BSR matrices (same parameters as the CSR version). |
 | `Task SpMMAsync<T>(CooMatrix<T> A, ...)` / `Task SpMMAsync<T>(BsrMatrix<T> A, ...)` | SpMM overloads for COO and BSR matrices. |
+
+## `SparseDirectSolver<T>` (cuDSS)
+
+Sparse direct solver for `A·X = B` backed by NVIDIA cuDSS (`cudss64_0.dll` / `libcudss.so.0` must be on the library path). `T` is `float` or `double`. The CSR matrix must have sorted column indices and must outlive the solver. Mirrors the staged workflow of nvmath-python's `DirectSolver`.
+
+```csharp
+using var solver = new SparseDirectSolver<double>(matrix);
+solver.Analyze();           // reordering + symbolic factorisation (pattern only)
+solver.Factorize();         // numerical factorisation
+solver.Solve(b, x, nrhs);   // call repeatedly for new right-hand sides
+// change matrix.Values in place, then:
+solver.Refactorize();       // reuses the analysis
+```
+
+| Member | Description |
+|---|---|
+| `SparseDirectSolver(CsrMatrix<T> matrix, DirectSolverOptions? options = null, CudaStream? stream = null)` | Creates the solver (square matrix required). |
+| `void Analyze()` / `Factorize()` / `Refactorize()` | The solver phases. `Factorize` and `Solve` run earlier phases implicitly. `Factorize`/`Refactorize` throw `InvalidOperationException` if cuDSS reports a failure. |
+| `void Solve(DeviceBuffer<T> b, DeviceBuffer<T> x, int nrhs = 1)` | Solves for column-major `n × nrhs` right-hand sides; `x` must not alias `b`. |
+| `void SetValues(DeviceBuffer<T> values)` | Points the solver at a different values array (same pattern); call `Refactorize` afterwards. |
+| `Task AnalyzeAsync / FactorizeAsync / RefactorizeAsync / SolveAsync` | Thread-pool versions. |
+| `long FactorNonZeros`, `int PerturbedPivots` | Statistics from the last factorisation. |
+
+`DirectSolverOptions`: `Structure` (`General` = LU, `Symmetric` = LDLᵀ, `SymmetricPositiveDefinite` = Cholesky), `View` (`Full`, `Lower`, `Upper` — which triangle is stored for symmetric/SPD matrices), `Reordering` (`CuDssReorderingAlg`), `RefinementSteps` (iterative refinement, default 0).
