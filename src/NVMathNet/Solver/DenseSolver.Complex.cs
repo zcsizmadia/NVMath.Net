@@ -182,7 +182,8 @@ public static partial class DenseSolver
         {
             using var devInfo = new DeviceBuffer<int>(1);
             using var tau = new DeviceBuffer<Complex>(n);
-            Complex one = Complex.One;
+            Span<byte> oneStore = stackalloc byte[AlignedScalar.StorageSize];
+            Complex* one = AlignedScalar.Store(oneStore, Complex.One);
             Complex* pA = (Complex*)a.Pointer, pB = (Complex*)b.Pointer, pTau = (Complex*)tau.Pointer;
 
             int lwork = CuSolverNative.ZgeqrfBufferSize(solver, m, n, pA, m);
@@ -203,7 +204,7 @@ public static partial class DenseSolver
             }
 
             CuBlasNative.Ztrsm(blas, CuBlasSideMode.Left, CuBlasFillMode.Upper, CuBlasOperation.None, CuBlasDiagType.NonUnit,
-                n, nrhs, &one, pA, m, pB, m);
+                n, nrhs, one, pA, m, pB, m);
             s.Synchronize();
         }
         finally

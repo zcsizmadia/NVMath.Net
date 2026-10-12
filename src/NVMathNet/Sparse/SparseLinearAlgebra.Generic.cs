@@ -72,6 +72,8 @@ public static partial class SparseLinearAlgebra
         where T : unmanaged, INumberBase<T>
     {
         var cudaType = CudaRuntime.GetCudaDataType<T>();
+        Span<byte> alphaStore = stackalloc byte[AlignedScalar.StorageSize];
+        T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
         var handle = CreateHandle(s);
         nint vecX = 0, vecY = 0, descr = 0;
@@ -85,11 +87,11 @@ public static partial class SparseLinearAlgebra
             vecY = CuSparseNative.CreateDnVec(y.Length, y.Pointer, cudaType);
             descr = CuSparseNative.SpSVCreateDescr();
 
-            nuint size = CuSparseNative.SpSVBufferSize(handle, opA, &alpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
+            nuint size = CuSparseNative.SpSVBufferSize(handle, opA, pAlpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
             ws = new Workspace(size);
             buffer = ws.Pointer;
-            CuSparseNative.SpSVAnalysis(handle, opA, &alpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr, buffer);
-            CuSparseNative.SpSVSolve(handle, opA, &alpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
+            CuSparseNative.SpSVAnalysis(handle, opA, pAlpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr, buffer);
+            CuSparseNative.SpSVSolve(handle, opA, pAlpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
             s.Synchronize();
         }
         finally
@@ -160,6 +162,8 @@ public static partial class SparseLinearAlgebra
         where T : unmanaged, INumberBase<T>
     {
         var cudaType = CudaRuntime.GetCudaDataType<T>();
+        Span<byte> alphaStore = stackalloc byte[AlignedScalar.StorageSize];
+        T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
         var handle = CreateHandle(s);
         nint matB = 0, matC = 0, descr = 0;
@@ -173,11 +177,11 @@ public static partial class SparseLinearAlgebra
             matC = CuSparseNative.CreateDnMat(m, n, m, c.Pointer, cudaType, ColMajor);
             descr = CuSparseNative.SpSMCreateDescr();
 
-            nuint size = CuSparseNative.SpSMBufferSize(handle, opA, CuSparseOperation.None, &alpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
+            nuint size = CuSparseNative.SpSMBufferSize(handle, opA, CuSparseOperation.None, pAlpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
             ws = new Workspace(size);
             buffer = ws.Pointer;
-            CuSparseNative.SpSMAnalysis(handle, opA, CuSparseOperation.None, &alpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr, buffer);
-            CuSparseNative.SpSMSolve(handle, opA, CuSparseOperation.None, &alpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
+            CuSparseNative.SpSMAnalysis(handle, opA, CuSparseOperation.None, pAlpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr, buffer);
+            CuSparseNative.SpSMSolve(handle, opA, CuSparseOperation.None, pAlpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
             s.Synchronize();
         }
         finally
@@ -240,6 +244,9 @@ public static partial class SparseLinearAlgebra
         where T : unmanaged, INumberBase<T>
     {
         var cudaType = CudaRuntime.GetCudaDataType<T>();
+        Span<byte> alphaStore = stackalloc byte[AlignedScalar.StorageSize], betaStore = stackalloc byte[AlignedScalar.StorageSize];
+        T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
+        T* pBeta = AlignedScalar.Store(betaStore, beta);
         long m = c.Rows, n = c.Cols;
         var handle = CreateHandle(s);
         nint matA = 0, matB = 0;
@@ -250,11 +257,11 @@ public static partial class SparseLinearAlgebra
             matA = CuSparseNative.CreateDnMat(m, k, m, a.Pointer, cudaType, ColMajor);
             matB = CuSparseNative.CreateDnMat(k, n, k, b.Pointer, cudaType, ColMajor);
 
-            nuint size = CuSparseNative.SddmmBufferSize(handle, CuSparseOperation.None, CuSparseOperation.None, &alpha, matA, matB, &beta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default);
+            nuint size = CuSparseNative.SddmmBufferSize(handle, CuSparseOperation.None, CuSparseOperation.None, pAlpha, matA, matB, pBeta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default);
             ws = new Workspace(size);
             buffer = ws.Pointer;
-            CuSparseNative.SddmmPreprocess(handle, CuSparseOperation.None, CuSparseOperation.None, &alpha, matA, matB, &beta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default, buffer);
-            CuSparseNative.Sddmm(handle, CuSparseOperation.None, CuSparseOperation.None, &alpha, matA, matB, &beta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default, buffer);
+            CuSparseNative.SddmmPreprocess(handle, CuSparseOperation.None, CuSparseOperation.None, pAlpha, matA, matB, pBeta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default, buffer);
+            CuSparseNative.Sddmm(handle, CuSparseOperation.None, CuSparseOperation.None, pAlpha, matA, matB, pBeta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default, buffer);
             s.Synchronize();
         }
         finally
@@ -312,6 +319,9 @@ public static partial class SparseLinearAlgebra
         var op = CuSparseOperation.None;
         var alg = CuSparseSpGemmAlg.Default;
         T beta = T.Zero;
+        Span<byte> alphaStore = stackalloc byte[AlignedScalar.StorageSize], betaStore = stackalloc byte[AlignedScalar.StorageSize];
+        T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
+        T* pBeta = AlignedScalar.Store(betaStore, beta);
         var handle = CreateHandle(s);
         nint matC = 0, descr = 0;
         void* buf1 = null, buf2 = null;
@@ -327,16 +337,16 @@ public static partial class SparseLinearAlgebra
             descr = CuSparseNative.SpGemmCreateDescr();
 
             nuint size1 = 0;
-            CuSparseNative.SpGemmWorkEstimation(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size1, null);
+            CuSparseNative.SpGemmWorkEstimation(handle, op, op, pAlpha, a.Descriptor, b.Descriptor, pBeta, matC, cudaType, alg, descr, ref size1, null);
             ws1 = new Workspace(size1);
             buf1 = ws1.Pointer;
-            CuSparseNative.SpGemmWorkEstimation(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size1, buf1);
+            CuSparseNative.SpGemmWorkEstimation(handle, op, op, pAlpha, a.Descriptor, b.Descriptor, pBeta, matC, cudaType, alg, descr, ref size1, buf1);
 
             nuint size2 = 0;
-            CuSparseNative.SpGemmCompute(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size2, null);
+            CuSparseNative.SpGemmCompute(handle, op, op, pAlpha, a.Descriptor, b.Descriptor, pBeta, matC, cudaType, alg, descr, ref size2, null);
             ws2 = new Workspace(size2);
             buf2 = ws2.Pointer;
-            CuSparseNative.SpGemmCompute(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size2, buf2);
+            CuSparseNative.SpGemmCompute(handle, op, op, pAlpha, a.Descriptor, b.Descriptor, pBeta, matC, cudaType, alg, descr, ref size2, buf2);
 
             CuSparseNative.SpMatGetSize(matC, out long rows, out long colCount, out long nnz);
             // cuSPARSE needs non-null arrays; an empty product keeps one-element placeholders and reports nnz = 0.
@@ -344,7 +354,7 @@ public static partial class SparseLinearAlgebra
             cols = new DeviceBuffer<int>(Math.Max(nnz, 1));
             vals = new DeviceBuffer<T>(Math.Max(nnz, 1));
             CuSparseNative.CsrSetPointers(matC, offsets.Pointer, cols.Pointer, vals.Pointer);
-            CuSparseNative.SpGemmCopy(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr);
+            CuSparseNative.SpGemmCopy(handle, op, op, pAlpha, a.Descriptor, b.Descriptor, pBeta, matC, cudaType, alg, descr);
             s.Synchronize();
 
             // The CsrMatrix takes ownership of the buffers.
@@ -389,7 +399,7 @@ public static partial class SparseLinearAlgebra
         ArgumentNullException.ThrowIfNull(matrix);
         ArgumentNullException.ThrowIfNull(x);
         ArgumentNullException.ThrowIfNull(y);
-        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, T.CreateChecked(alpha), T.CreateChecked(beta), transpose, s));
     }
 
     /// <summary>Sparse matrix-vector product <c>y = alpha · op(A) · x + beta · y</c> for a BSR matrix.</summary>
@@ -402,7 +412,7 @@ public static partial class SparseLinearAlgebra
         ArgumentNullException.ThrowIfNull(matrix);
         ArgumentNullException.ThrowIfNull(x);
         ArgumentNullException.ThrowIfNull(y);
-        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, T.CreateChecked(alpha), T.CreateChecked(beta), transpose, s));
     }
 
     /// <summary>Sparse-dense matrix product <c>C = alpha · op(A) · B + beta · C</c> for a COO matrix.</summary>
@@ -415,7 +425,7 @@ public static partial class SparseLinearAlgebra
         ArgumentNullException.ThrowIfNull(matrix);
         ArgumentNullException.ThrowIfNull(b);
         ArgumentNullException.ThrowIfNull(c);
-        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s));
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, T.CreateChecked(alpha), T.CreateChecked(beta), transpose, s));
     }
 
     /// <summary>Sparse-dense matrix product <c>C = alpha · op(A) · B + beta · C</c> for a BSR matrix.</summary>
@@ -428,7 +438,7 @@ public static partial class SparseLinearAlgebra
         ArgumentNullException.ThrowIfNull(matrix);
         ArgumentNullException.ThrowIfNull(b);
         ArgumentNullException.ThrowIfNull(c);
-        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s));
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, T.CreateChecked(alpha), T.CreateChecked(beta), transpose, s));
     }
 
     // -- COO triangular solves and CSC SpMV/SpMM -----------------------------
@@ -481,7 +491,7 @@ public static partial class SparseLinearAlgebra
         ArgumentNullException.ThrowIfNull(matrix);
         ArgumentNullException.ThrowIfNull(x);
         ArgumentNullException.ThrowIfNull(y);
-        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, T.CreateChecked(alpha), T.CreateChecked(beta), transpose, s));
     }
 
     /// <summary>Sparse-dense matrix product <c>C = alpha · op(A) · B + beta · C</c> for a CSC matrix.</summary>
@@ -489,6 +499,128 @@ public static partial class SparseLinearAlgebra
     public static Task SpMMAsync<T>(
         CscMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
         float alpha = 1.0f, float beta = 0.0f, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(b);
+        ArgumentNullException.ThrowIfNull(c);
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, T.CreateChecked(alpha), T.CreateChecked(beta), transpose, s));
+    }
+
+    // -- Typed scalars (complex alpha/beta) ----------------------------------
+
+    /// <summary>
+    /// <c>y = alpha · op(A) · x + beta · y</c> for a CSR matrix with scalars of the element type, which allows complex
+    /// scalars for <see cref="System.Numerics.Complex"/> matrices.
+    /// </summary>
+    public static Task SpMVAsync<T>(
+        CsrMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        T alpha, T beta, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(y);
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+    }
+
+    /// <summary>
+    /// <c>C = alpha · op(A) · B + beta · C</c> for a CSR matrix with scalars of the element type, which allows complex
+    /// scalars for <see cref="System.Numerics.Complex"/> matrices.
+    /// </summary>
+    public static Task SpMMAsync<T>(
+        CsrMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        T alpha, T beta, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(b);
+        ArgumentNullException.ThrowIfNull(c);
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s));
+    }
+
+    /// <summary>
+    /// <c>y = alpha · op(A) · x + beta · y</c> for a COO matrix with scalars of the element type, which allows complex
+    /// scalars for <see cref="System.Numerics.Complex"/> matrices.
+    /// </summary>
+    public static Task SpMVAsync<T>(
+        CooMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        T alpha, T beta, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(y);
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+    }
+
+    /// <summary>
+    /// <c>C = alpha · op(A) · B + beta · C</c> for a COO matrix with scalars of the element type, which allows complex
+    /// scalars for <see cref="System.Numerics.Complex"/> matrices.
+    /// </summary>
+    public static Task SpMMAsync<T>(
+        CooMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        T alpha, T beta, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(b);
+        ArgumentNullException.ThrowIfNull(c);
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s));
+    }
+
+    /// <summary>
+    /// <c>y = alpha · op(A) · x + beta · y</c> for a BSR matrix with scalars of the element type, which allows complex
+    /// scalars for <see cref="System.Numerics.Complex"/> matrices.
+    /// </summary>
+    public static Task SpMVAsync<T>(
+        BsrMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        T alpha, T beta, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(y);
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+    }
+
+    /// <summary>
+    /// <c>C = alpha · op(A) · B + beta · C</c> for a BSR matrix with scalars of the element type, which allows complex
+    /// scalars for <see cref="System.Numerics.Complex"/> matrices.
+    /// </summary>
+    public static Task SpMMAsync<T>(
+        BsrMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        T alpha, T beta, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(b);
+        ArgumentNullException.ThrowIfNull(c);
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s));
+    }
+
+    /// <summary>
+    /// <c>y = alpha · op(A) · x + beta · y</c> for a CSC matrix with scalars of the element type, which allows complex
+    /// scalars for <see cref="System.Numerics.Complex"/> matrices.
+    /// </summary>
+    public static Task SpMVAsync<T>(
+        CscMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        T alpha, T beta, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(y);
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+    }
+
+    /// <summary>
+    /// <c>C = alpha · op(A) · B + beta · C</c> for a CSC matrix with scalars of the element type, which allows complex
+    /// scalars for <see cref="System.Numerics.Complex"/> matrices.
+    /// </summary>
+    public static Task SpMMAsync<T>(
+        CscMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        T alpha, T beta, bool transpose = false,
         CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
     {
         ArgumentNullException.ThrowIfNull(matrix);

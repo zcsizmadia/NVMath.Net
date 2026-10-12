@@ -487,6 +487,10 @@ public static unsafe class CudaRuntime
         {
             return CudaDataType.R_16F;
         }
+        else if (t == typeof(System.Numerics.Complex))
+        {
+            return CudaDataType.C_64F;
+        }
 
         throw new NotSupportedException($"Unsupported element type {t} for sparse matrix.");
     }
