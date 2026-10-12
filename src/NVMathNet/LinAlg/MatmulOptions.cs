@@ -43,10 +43,16 @@ public enum MatmulEpilog
     ReluBias        = 6,
     /// <summary>Apply GELU activation.</summary>
     Gelu            = 32,
+    /// <summary>Apply ReLU and save the auxiliary bitmask for backward pass.</summary>
+    ReluAux         = 130,
+    /// <summary>Add bias, apply ReLU and save the auxiliary bitmask.</summary>
+    ReluAuxBias     = 134,
     /// <summary>Apply GELU and save the pre-GELU output for backward pass.</summary>
-    GeluAux         = 96,
+    GeluAux         = 160,
     /// <summary>Add bias and apply GELU.</summary>
-    GeluBias        = 100,
+    GeluBias        = 36,
+    /// <summary>Add bias, apply GELU and save the pre-GELU output.</summary>
+    GeluAuxBias     = 164,
 }
 
 /// <summary>Element data types for matrices.</summary>
@@ -106,6 +112,9 @@ public sealed class MatmulOptions
 
     /// <summary>Whether to transpose matrix A.  Default: <c>false</c>.</summary>
     public bool TransposeA { get; set; }
+
+    /// <summary>Enables FP8 fast accumulation (faster, lower precision).</summary>
+    public bool FastAccum { get; set; }
 
     /// <summary>Whether to transpose matrix B.  Default: <c>false</c>.</summary>
     public bool TransposeB { get; set; }

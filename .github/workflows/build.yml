@@ -25,10 +25,11 @@ jobs:
       - name: Restore
         run: dotnet restore
 
+      # Builds library, tests and samples so compile errors in any of them fail CI.
       - name: Build
-        run: dotnet build -c Release --no-restore src/NVMathNet/NVMathNet.csproj
+        run: dotnet build -c Release --no-restore
 
-      # Tests require NVIDIA GPU
+      # Tests are compiled above but not run: they require an NVIDIA GPU
       #- name: Test
       #  run: dotnet test -c Release --no-build
 
