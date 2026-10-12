@@ -55,6 +55,10 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     private const int DescAmaxDPointer = 21;
     private const int DescFastAccum = 25;
     private const int DescBiasDataType = 26;
+    private const int DescEpilogueAuxPointer = 11;
+    private const int DescEpilogueAuxLd = 12;
+    private const int DescEpilogueAuxBatchStride = 13;
+    private const int DescEpilogueAuxDataType = 22;
     private const int LayoutBatchCount = 5;
     private const int LayoutStridedBatchOffset = 6;
     private const int PrefMaxWorkspaceBytes = 1;
@@ -218,6 +222,35 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         if (batchStride != 0)
         {
             CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescBiasBatchStride, &batchStride, sizeof(long));
+        }
+    }
+
+    /// <summary>
+    /// Sets the auxiliary output written by the <c>*Aux</c> epilogs (<see cref="MatmulEpilog.GeluAux"/>,
+    /// <see cref="MatmulEpilog.GeluAuxBias"/>, <see cref="MatmulEpilog.ReluAux"/>,
+    /// <see cref="MatmulEpilog.ReluAuxBias"/>), used by the backward pass.
+    /// </summary>
+    /// <param name="aux">Device pointer to the aux buffer (16-byte aligned).</param>
+    /// <param name="ld">
+    /// Leading dimension in elements; for GELU a multiple of 8 and at least M. For ReLU the aux
+    /// buffer is a bit mask and <paramref name="ld"/> counts bits (a multiple of 128).
+    /// </param>
+    /// <param name="auxType">Element type of the GELU aux output; <c>null</c> keeps the cuBLASLt default.</param>
+    /// <param name="batchStride">Stride between batches in elements (bits for ReLU); 0 for non-batched.</param>
+    public unsafe void SetEpilogAux(nint aux, long ld, MatrixDataType? auxType = null, long batchStride = 0)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        SetPointerAttr(DescEpilogueAuxPointer, aux);
+        CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescEpilogueAuxLd, &ld, sizeof(long));
+        if (auxType is { } t)
+        {
+            int dt = (int)t;
+            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescEpilogueAuxDataType, &dt, sizeof(int));
+        }
+
+        if (batchStride != 0)
+        {
+            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescEpilogueAuxBatchStride, &batchStride, sizeof(long));
         }
     }
 

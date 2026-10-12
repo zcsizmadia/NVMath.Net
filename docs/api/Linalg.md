@@ -63,6 +63,7 @@ Implements `IAsyncDisposable`, `IDisposable`.
 | `Task SynchronizeAsync(CancellationToken ct = default)` | Synchronises the stream. |
 | `void SetScalePointers(nint aScale = 0, bScale = 0, cScale = 0, dScale = 0, amaxD = 0)` | Device pointers to FP8 scale factors and `amax(D)` output. |
 | `void SetBias(nint bias, MatrixDataType? biasType = null, long batchStride = 0)` | Bias vector for the `Bias` epilogs. |
+| `void SetEpilogAux(nint aux, long ld, MatrixDataType? auxType = null, long batchStride = 0)` | Aux output for the `*Aux` epilogs (GELU: pre-activation values, `ld` a multiple of 8; ReLU: bit mask, `ld` counts bits, multiple of 128). Call before `Plan`. |
 | `int AlgorithmCount`, `int SelectedAlgorithm` | Number of planned candidate algorithms (best-first) and the one `Execute` uses. Request several via `MatmulPlanPreferences.RequestedAlgoCount`. |
 | `void SelectAlgorithm(int index)` | Picks a candidate algorithm. |
 | `float[] Autotune(nint pA, pB, pC, pD, double alpha = 1, double beta = 0, int iterations = 3)` / `AutotuneAsync(...)` | Times every candidate and selects the fastest; returns average ms per candidate. **D is overwritten** by the trial runs. |

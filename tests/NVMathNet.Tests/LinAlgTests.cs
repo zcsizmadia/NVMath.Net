@@ -405,4 +405,47 @@ public sealed class LinAlgTests
         await matmul.PlanAsync();
         await Assert.That(() => matmul.SelectAlgorithm(matmul.AlgorithmCount)).Throws<ArgumentOutOfRangeException>();
     }
+
+    [Test]
+    public async Task Matmul_GeluAux_WritesPreActivationToAuxBuffer()
+    {
+        // A = I so A*B = B. D = gelu(B) and the aux buffer holds the pre-activation B.
+        const int N = 8;
+        float[] hI = new float[N * N];
+        float[] hB = new float[N * N];
+        for (int i = 0; i < N; i++)
+        {
+            hI[i + N * i] = 1f;
+        }
+
+        for (int i = 0; i < hB.Length; i++)
+        {
+            hB[i] = ((i % 13) - 6) * 0.3f;
+        }
+
+        using var dA = new DeviceBuffer<float>(N * N);
+        using var dB = new DeviceBuffer<float>(N * N);
+        using var dC = new DeviceBuffer<float>(N * N);
+        using var dD = new DeviceBuffer<float>(N * N);
+        using var dAux = new DeviceBuffer<float>(N * N);
+        dA.CopyFrom(hI.AsSpan());
+        dB.CopyFrom(hB.AsSpan());
+        dC.Clear();
+        dAux.Clear();
+
+        using var matmul = new Matmul(N, N, N, options: new MatmulOptions { Epilog = MatmulEpilog.GeluAux, Blocking = true });
+        matmul.SetEpilogAux(dAux.PointerAsInt, ld: N);
+        await matmul.PlanAsync();
+        await matmul.ExecuteAsync<float>(dA, dB, dC, dD);
+
+        float[] d = dD.ToArray();
+        float[] aux = dAux.ToArray();
+        for (int i = 0; i < hB.Length; i++)
+        {
+            double x = hB[i];
+            double gelu = 0.5 * x * (1 + Math.Tanh(Math.Sqrt(2 / Math.PI) * (x + 0.044715 * x * x * x)));
+            await Assert.That(Math.Abs(aux[i] - x)).IsLessThan(1e-3);
+            await Assert.That(Math.Abs(d[i] - gelu)).IsLessThan(1e-3);
+        }
+    }
 }
