@@ -319,4 +319,90 @@ public sealed class LinAlgTests
             await Assert.That(err).IsLessThan(1e-2f);
         }
     }
+
+    [Test]
+    public async Task Matmul_Double_ScalarsKeepFullPrecision()
+    {
+        // D = 0.1 * A * B + 0.3 * C with exact-double scalars; a float alpha would be off by ~1e-9.
+        double[] hA = [1, 0, 0, 1];   // identity (col-major)
+        double[] hB = [3, 5, 7, 11];  // [[3,7],[5,11]] col-major
+        double[] hC = [1, 1, 1, 1];
+        var options = new MatmulOptions
+        {
+            ComputeType = MatmulComputeType.Compute64F,
+            TypeA = MatrixDataType.Float64,
+            TypeB = MatrixDataType.Float64,
+            TypeC = MatrixDataType.Float64,
+            TypeD = MatrixDataType.Float64,
+            ScaleType = MatrixDataType.Float64,
+            Blocking = true,
+        };
+
+        using var dA = new DeviceBuffer<double>(4);
+        using var dB = new DeviceBuffer<double>(4);
+        using var dC = new DeviceBuffer<double>(4);
+        using var dD = new DeviceBuffer<double>(4);
+        dA.CopyFrom(hA.AsSpan());
+        dB.CopyFrom(hB.AsSpan());
+        dC.CopyFrom(hC.AsSpan());
+
+        using var matmul = new Matmul(2, 2, 2, options: options);
+        await matmul.PlanAsync();
+        await matmul.ExecuteAsync<double>(dA, dB, dC, dD, alpha: 0.1, beta: 0.3);
+
+        double[] r = dD.ToArray();
+        for (int i = 0; i < 4; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - (0.1 * hB[i] + 0.3))).IsLessThan(1e-13);
+        }
+    }
+
+    [Test]
+    public async Task Matmul_Autotune_SelectsAlgorithm_AndResultIsCorrect()
+    {
+        // D = I * B must equal B regardless of which algorithm is chosen.
+        const int N = 256;
+        float[] hI = new float[N * N];
+        float[] hB = new float[N * N];
+        for (int i = 0; i < N; i++)
+        {
+            hI[i + N * i] = 1f;
+        }
+
+        for (int i = 0; i < hB.Length; i++)
+        {
+            hB[i] = (i % 97) * 0.25f;
+        }
+
+        using var dA = new DeviceBuffer<float>(N * N);
+        using var dB = new DeviceBuffer<float>(N * N);
+        using var dC = new DeviceBuffer<float>(N * N);
+        using var dD = new DeviceBuffer<float>(N * N);
+        dA.CopyFrom(hI.AsSpan());
+        dB.CopyFrom(hB.AsSpan());
+        dC.Clear();
+
+        using var matmul = new Matmul(N, N, N, options: new MatmulOptions { Blocking = true });
+        await matmul.PlanAsync(new MatmulPlanPreferences { RequestedAlgoCount = 8 });
+        await Assert.That(matmul.AlgorithmCount).IsGreaterThanOrEqualTo(1);
+
+        float[] times = matmul.Autotune(dA.PointerAsInt, dB.PointerAsInt, dC.PointerAsInt, dD.PointerAsInt);
+        await Assert.That(times.Length).IsEqualTo(matmul.AlgorithmCount);
+        await Assert.That(float.IsFinite(times[matmul.SelectedAlgorithm])).IsTrue();
+
+        await matmul.ExecuteAsync<float>(dA, dB, dC, dD);
+        float[] r = dD.ToArray();
+        for (int i = 0; i < r.Length; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - hB[i])).IsLessThan(1e-4f);
+        }
+    }
+
+    [Test]
+    public async Task Matmul_SelectAlgorithm_OutOfRange_Throws()
+    {
+        using var matmul = new Matmul(8, 8, 8);
+        await matmul.PlanAsync();
+        await Assert.That(() => matmul.SelectAlgorithm(matmul.AlgorithmCount)).Throws<ArgumentOutOfRangeException>();
+    }
 }
