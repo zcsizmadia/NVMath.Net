@@ -64,6 +64,19 @@ public static unsafe partial class CuSparseNative
 {
     private static nint Fn(string name) => NativeLibraryLoader.GetExport(LibName, name);
 
+    /// <summary>Creates a CSC sparse matrix descriptor.</summary>
+    public static nint CreateCsc(
+        long rows, long cols, long nnz,
+        void* colOffsets, void* rowInd, void* values,
+        CuSparseIndexType colOffType, CuSparseIndexType rowIndType,
+        CuSparseIndexBase idxBase, CudaDataType valType)
+    {
+        nint d;
+        Check(((delegate* unmanaged[Cdecl]<nint*, long, long, long, void*, void*, void*, CuSparseIndexType, CuSparseIndexType, CuSparseIndexBase, CudaDataType, CuSparseStatus>)Fn("cusparseCreateCsc"))(
+            &d, rows, cols, nnz, colOffsets, rowInd, values, colOffType, rowIndType, idxBase, valType), "cusparseCreateCsc");
+        return d;
+    }
+
     // ── Matrix attributes / sizes ─────────────────────────────────────────────
 
     /// <summary>Sets a sparse matrix attribute (fill mode or diagonal type).</summary>

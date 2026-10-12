@@ -17,6 +17,7 @@ namespace NVMathNet.Sparse;
 public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumberBase<T>
 {
     private nint _descriptor;
+    private readonly long _nnz;
     private bool _disposed;
 
     /// <summary>Number of rows.</summary>
@@ -24,7 +25,7 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
     /// <summary>Number of columns.</summary>
     public long Cols { get; }
     /// <summary>Number of non-zero elements.</summary>
-    public long NNZ => Values.Length;
+    public long NNZ => _nnz;
 
     /// <summary>Row offsets — length Rows+1.</summary>
     public DeviceBuffer<int> RowOffsets { get; }
@@ -51,11 +52,16 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
     /// <param name="rowOffsets">Row offsets (length rows+1).</param>
     /// <param name="colIndices">Column indices (length NNZ).</param>
     /// <param name="values">Non-zero values (length NNZ).</param>
+    /// <param name="nnz">
+    /// Number of stored entries when it is smaller than the buffer length (for example <c>0</c> for an
+    /// empty matrix backed by one-element placeholder buffers); <c>null</c> uses the length of <paramref name="values"/>.
+    /// </param>
     public CsrMatrix(
         long rows, long cols,
         DeviceBuffer<int> rowOffsets,
         DeviceBuffer<int> colIndices,
-        DeviceBuffer<T> values)
+        DeviceBuffer<T> values,
+        long? nnz = null)
     {
         ArgumentNullException.ThrowIfNull(rowOffsets);
         ArgumentNullException.ThrowIfNull(colIndices);
@@ -66,10 +72,11 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
         RowOffsets = rowOffsets;
         ColIndices = colIndices;
         Values = values;
+        _nnz = nnz ?? values.Length;
 
         var cudaType = CudaRuntime.GetCudaDataType<T>();
         _descriptor = CuSparseNative.CreateCsr(
-            rows, cols, values.Length,
+            rows, cols, _nnz,
             rowOffsets.Pointer,
             colIndices.Pointer,
             values.Pointer,
@@ -84,6 +91,21 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
     /// (equivalently, this matrix converted to CSC). The caller owns the result.
     /// </summary>
     public CsrMatrix<T> Transpose()
+    {
+        var (colPtr, rowInd, vals) = TransposeBuffers();
+        return new CsrMatrix<T>(Cols, Rows, colPtr, rowInd, vals);
+    }
+
+    /// <summary>
+    /// Returns this matrix converted to CSC. The caller owns the result.
+    /// </summary>
+    public CscMatrix<T> ToCsc()
+    {
+        var (colPtr, rowInd, vals) = TransposeBuffers();
+        return new CscMatrix<T>(Rows, Cols, colPtr, rowInd, vals);
+    }
+
+    private (DeviceBuffer<int> ColOffsets, DeviceBuffer<int> RowIndices, DeviceBuffer<T> Values) TransposeBuffers()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (Rows > int.MaxValue || Cols > int.MaxValue || NNZ > int.MaxValue)
@@ -113,7 +135,7 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
             CudaRuntime.DeviceSynchronize();
 
             // The CSC arrays of A are the CSR arrays of A^T.
-            return new CsrMatrix<T>(Cols, Rows, colPtr, rowInd, vals);
+            return (colPtr, rowInd, vals);
         }
         catch
         {
