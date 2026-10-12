@@ -76,6 +76,61 @@ public sealed class LinAlgTests
     }
 
     [Test]
+    public async Task Matmul_Float_StridedBatch()
+    {
+        // Two independent 2x2 products, column-major, packed back-to-back.
+        // Batch 0: A0 * I = A0.  Batch 1: A1 * (2I) = 2*A1.
+        const int Batch = 2;
+        float[] hA = [1, 3, 2, 4, 5, 7, 6, 8];
+        float[] hB = [1, 0, 0, 1, 2, 0, 0, 2];
+
+        using var dA = new DeviceBuffer<float>(8);
+        using var dB = new DeviceBuffer<float>(8);
+        using var dC = new DeviceBuffer<float>(8);
+        using var dD = new DeviceBuffer<float>(8);
+        dA.CopyFrom(hA.AsSpan());
+        dB.CopyFrom(hB.AsSpan());
+        dC.Clear();
+
+        using var matmul = new Matmul(2, 2, 2, batchCount: Batch, options: new MatmulOptions { Blocking = true });
+        await matmul.PlanAsync();
+        await matmul.ExecuteAsync<float>(dA, dB, dC, dD);
+
+        float[] result = dD.ToArray();
+        float[] expected = [1, 3, 2, 4, 10, 14, 12, 16];
+        for (int i = 0; i < expected.Length; i++)
+        {
+            await Assert.That(Math.Abs(result[i] - expected[i])).IsLessThan(1e-4f);
+        }
+    }
+
+    [Test]
+    public async Task Matmul_Float_TransposeA()
+    {
+        // A stored col-major 3x2 (K x M); op(A) = A^T is 2x3.
+        // A = [[1,2],[3,4],[5,6]] => A^T = [[1,3,5],[2,4,6]]; B = ones(3x1)
+        // D = [[9],[12]]
+        float[] hA = [1, 3, 5, 2, 4, 6];
+        float[] hB = [1, 1, 1];
+
+        using var dA = new DeviceBuffer<float>(6);
+        using var dB = new DeviceBuffer<float>(3);
+        using var dC = new DeviceBuffer<float>(2);
+        using var dD = new DeviceBuffer<float>(2);
+        dA.CopyFrom(hA.AsSpan());
+        dB.CopyFrom(hB.AsSpan());
+        dC.Clear();
+
+        using var matmul = new Matmul(2, 1, 3, options: new MatmulOptions { TransposeA = true, Blocking = true });
+        await matmul.PlanAsync();
+        await matmul.ExecuteAsync<float>(dA, dB, dC, dD);
+
+        float[] result = dD.ToArray();
+        await Assert.That(Math.Abs(result[0] - 9f)).IsLessThan(1e-4f);
+        await Assert.That(Math.Abs(result[1] - 12f)).IsLessThan(1e-4f);
+    }
+
+    [Test]
     public async Task Matmul_Float_2x3_Times_3x2()
     {
         // A (2x3) * B (3x2) = D (2x2)

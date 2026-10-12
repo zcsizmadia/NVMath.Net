@@ -36,6 +36,7 @@ enum MatmulEpilog { Default = 1, Relu = 2, Bias = 4, ReluBias = 6, Gelu = 32, Ge
 | `MaxWorkspaceBytes` | `nuint` | `4 MB` | Max workspace size. |
 | `TransposeA` | `bool` | `false` | Transpose A before multiply. |
 | `TransposeB` | `bool` | `false` | Transpose B before multiply. |
+| `FastAccum` | `bool` | `false` | FP8 fast accumulation. |
 | `Blocking` | `bool` | `true` | Synchronise after execution. |
 
 ### `MatmulPlanPreferences`
@@ -60,6 +61,11 @@ Implements `IAsyncDisposable`, `IDisposable`.
 | `Task ExecuteAsync<T>(DeviceBuffer<T> a, b, c, d, float alpha = 1f, float beta = 0f, CancellationToken ct = default)` | Typed async execution. |
 | `void Execute(nint pA, pB, pC, pD, float alpha = 1f, float beta = 0f)` | Raw pointer execution. |
 | `Task SynchronizeAsync(CancellationToken ct = default)` | Synchronises the stream. |
+| `void SetScalePointers(nint aScale = 0, bScale = 0, cScale = 0, dScale = 0, amaxD = 0)` | Device pointers to FP8 scale factors and `amax(D)` output. |
+| `void SetBias(nint bias, MatrixDataType? biasType = null, long batchStride = 0)` | Bias vector for the `Bias` epilogs. |
+
+**Batched matmul:** pass `batchCount > 1`; A, B, C and D are expected packed back-to-back
+(strides `m*k`, `k*n`, `m*n`, `m*n` elements).
 
 ---
 

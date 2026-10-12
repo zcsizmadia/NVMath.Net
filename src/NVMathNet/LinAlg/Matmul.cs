@@ -39,6 +39,25 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
     private nint   _workspacePtr;
 
+    // ── cuBLASLt attribute IDs (see cublasLt.h) ───────────────────────────────
+
+    private const int DescTransA = 3;
+    private const int DescTransB = 4;
+    private const int DescEpilogue = 7;
+    private const int DescBiasPointer = 8;
+    private const int DescBiasBatchStride = 10;
+    private const int DescAScalePointer = 17;
+    private const int DescBScalePointer = 18;
+    private const int DescCScalePointer = 19;
+    private const int DescDScalePointer = 20;
+    private const int DescAmaxDPointer = 21;
+    private const int DescFastAccum = 25;
+    private const int DescBiasDataType = 26;
+    private const int LayoutBatchCount = 5;
+    private const int LayoutStridedBatchOffset = 6;
+    private const int PrefMaxWorkspaceBytes = 1;
+    private const int PrefImplMask = 12;
+
     // ── Dimensions ────────────────────────────────────────────────────────────
 
     private readonly long _m, _n, _k;
@@ -89,7 +108,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             int opT = (int)CuBlasOperation.Transpose;
             CuBlasNative.MatmulDescSetAttribute(
                 _matmulDesc,
-                0, // CUBLASLT_MATMUL_DESC_TRANSA
+                DescTransA,
                 &opT, sizeof(int));
         }
         if (_options.TransposeB)
@@ -97,7 +116,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             int opT = (int)CuBlasOperation.Transpose;
             CuBlasNative.MatmulDescSetAttribute(
                 _matmulDesc,
-                1, // CUBLASLT_MATMUL_DESC_TRANSB,
+                DescTransB,
                 &opT, sizeof(int));
         }
 
@@ -107,7 +126,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             int epilog = (int)_options.Epilog;
             CuBlasNative.MatmulDescSetAttribute(
                 _matmulDesc,
-                5, // CUBLASLT_MATMUL_DESC_EPILOGUE
+                DescEpilogue,
                 &epilog, sizeof(int));
         }
 
@@ -126,12 +145,89 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         _layoutC = CuBlasNative.MatrixLayoutCreate((CudaDataType)typeC, (ulong)_m, (ulong)_n, ldC);
         _layoutD = CuBlasNative.MatrixLayoutCreate((CudaDataType)typeD, (ulong)_m, (ulong)_n, ldC);
 
+        if (_options.FastAccum)
+        {
+            int fast = 1;
+            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescFastAccum, &fast, sizeof(int));
+        }
+
+        if (_batchCount > 1)
+        {
+            // Strides are in elements; matrices are packed back-to-back.
+            SetBatch(_layoutA, _m * _k);
+            SetBatch(_layoutB, _k * _n);
+            SetBatch(_layoutC, _m * _n);
+            SetBatch(_layoutD, _m * _n);
+        }
+
         _preference = CuBlasNative.MatmulPreferenceCreate();
         ulong ws = _options.MaxWorkspaceBytes;
         CuBlasNative.MatmulPreferenceSetAttribute(
             _preference,
-            1, // CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES
+            PrefMaxWorkspaceBytes,
             &ws, (nuint)sizeof(ulong));
+    }
+
+    private unsafe void SetBatch(nint layout, long strideElements)
+    {
+        int count = checked((int)_batchCount);
+        CuBlasNative.MatrixLayoutSetAttribute(layout, LayoutBatchCount, &count, sizeof(int));
+        CuBlasNative.MatrixLayoutSetAttribute(layout, LayoutStridedBatchOffset, &strideElements, sizeof(long));
+    }
+
+    // ── Scale / bias pointers ─────────────────────────────────────────────────
+
+    /// <summary>
+    /// Sets the device pointers to the scalar scale factors used by FP8 matmul
+    /// and the optional <c>amax(D)</c> output. Pass <c>0</c> to leave a pointer
+    /// unchanged. Call before <see cref="Execute"/>.
+    /// </summary>
+    /// <param name="aScale">Device pointer to the float scale of A.</param>
+    /// <param name="bScale">Device pointer to the float scale of B.</param>
+    /// <param name="cScale">Device pointer to the float scale of C.</param>
+    /// <param name="dScale">Device pointer to the float scale of D.</param>
+    /// <param name="amaxD">Device pointer receiving the absolute maximum of D.</param>
+    public void SetScalePointers(nint aScale = 0, nint bScale = 0, nint cScale = 0, nint dScale = 0, nint amaxD = 0)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        SetPointerAttr(DescAScalePointer, aScale);
+        SetPointerAttr(DescBScalePointer, bScale);
+        SetPointerAttr(DescCScalePointer, cScale);
+        SetPointerAttr(DescDScalePointer, dScale);
+        SetPointerAttr(DescAmaxDPointer, amaxD);
+    }
+
+    /// <summary>
+    /// Sets the bias vector used by the <c>Bias</c> family of epilogs.
+    /// </summary>
+    /// <param name="bias">Device pointer to the bias vector (length M).</param>
+    /// <param name="biasType">Element type of the bias; <c>null</c> keeps the cuBLASLt default.</param>
+    /// <param name="batchStride">Stride in elements between batches; 0 shares one bias.</param>
+    public unsafe void SetBias(nint bias, MatrixDataType? biasType = null, long batchStride = 0)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        SetPointerAttr(DescBiasPointer, bias);
+        if (biasType is { } t)
+        {
+            int dt = (int)t;
+            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescBiasDataType, &dt, sizeof(int));
+        }
+
+        if (batchStride != 0)
+        {
+            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescBiasBatchStride, &batchStride, sizeof(long));
+        }
+    }
+
+    private unsafe void SetPointerAttr(int attr, nint value)
+    {
+        if (value == 0)
+        {
+            return;
+        }
+
+        void* p = (void*)value;
+        CuBlasNative.MatmulDescSetAttribute(_matmulDesc, attr, &p, (nuint)sizeof(void*));
     }
 
     // ── Plan ──────────────────────────────────────────────────────────────────
@@ -177,7 +273,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             ulong wsVal = wsOverride;
             CuBlasNative.MatmulPreferenceSetAttribute(
                 _preference,
-                1, // CUBLASLT_MATMUL_PREF_MAX_WORKSPACE_BYTES
+                PrefMaxWorkspaceBytes,
                 &wsVal, (nuint)sizeof(ulong));
         }
 
@@ -187,7 +283,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             ulong mask = prefs.NumericalImplMask;
             CuBlasNative.MatmulPreferenceSetAttribute(
                 _preference,
-                4, // CUBLASLT_MATMUL_PREF_IMPL_MASK
+                PrefImplMask,
                 &mask, sizeof(ulong));
         }
 
