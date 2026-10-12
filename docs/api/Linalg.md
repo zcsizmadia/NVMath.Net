@@ -58,11 +58,14 @@ Implements `IAsyncDisposable`, `IDisposable`.
 | `Matmul(long m, long n, long k, long batchCount = 1, MatmulOptions? options = null, CudaStream? stream = null)` | Creates the wrapper. |
 | `Task PlanAsync(MatmulPlanPreferences? prefs = null, CancellationToken ct = default)` | Plans the operation (selects algorithm). |
 | `void Plan(MatmulPlanPreferences? prefs = null)` | Synchronous plan. |
-| `Task ExecuteAsync<T>(DeviceBuffer<T> a, b, c, d, float alpha = 1f, float beta = 0f, CancellationToken ct = default)` | Typed async execution. |
-| `void Execute(nint pA, pB, pC, pD, float alpha = 1f, float beta = 0f)` | Raw pointer execution. |
+| `Task ExecuteAsync<T>(DeviceBuffer<T> a, b, c, d, double alpha = 1, double beta = 0, CancellationToken ct = default)` | Typed async execution. |
+| `void Execute(nint pA, pB, pC, pD, double alpha = 1, double beta = 0)` | Raw pointer execution. |
 | `Task SynchronizeAsync(CancellationToken ct = default)` | Synchronises the stream. |
 | `void SetScalePointers(nint aScale = 0, bScale = 0, cScale = 0, dScale = 0, amaxD = 0)` | Device pointers to FP8 scale factors and `amax(D)` output. |
 | `void SetBias(nint bias, MatrixDataType? biasType = null, long batchStride = 0)` | Bias vector for the `Bias` epilogs. |
+| `int AlgorithmCount`, `int SelectedAlgorithm` | Number of planned candidate algorithms (best-first) and the one `Execute` uses. Request several via `MatmulPlanPreferences.RequestedAlgoCount`. |
+| `void SelectAlgorithm(int index)` | Picks a candidate algorithm. |
+| `float[] Autotune(nint pA, pB, pC, pD, double alpha = 1, double beta = 0, int iterations = 3)` / `AutotuneAsync(...)` | Times every candidate and selects the fastest; returns average ms per candidate. **D is overwritten** by the trial runs. |
 
 **Batched matmul:** pass `batchCount > 1`; A, B, C and D are expected packed back-to-back
 (strides `m*k`, `k*n`, `m*n`, `m*n` elements).
@@ -117,3 +120,5 @@ Diagonal matrix multiply using cuBLAS DGMM: `C = diag(x) * A` (left) or `C = A *
 | `Task DdgmmAsync(DeviceBuffer<double> a, x, c, int m, n, ...)` | Double-precision diagonal multiply. |
 
 Parameters: `leftSide`, `stream`, `ct`.
+
+Alpha and beta are `double` and are encoded according to `MatmulOptions.ScaleType` (`Float32`, `Float64`, `Float16`, `BFloat16` or `Int32`).

@@ -31,6 +31,8 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     private nint _layoutD;
     private nint _preference;
     private byte[]? _algoBuffer;
+    private byte[] _allAlgos = [];
+    private int _algoCount;
     private nuint  _algoWorkspaceSize;
     private bool _planned;
     private bool _disposed;
@@ -299,25 +301,116 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             throw new InvalidOperationException("No cuBLASLt algorithm found for the given matmul configuration.");
         }
 
-        // Trim to first (highest-scored) result
-        if (algoCount > 1 && _algoBuffer.Length > CuBlasNative.HeuristicResultSize)
+        // Keep every candidate (ordered best-first by the heuristic) so Autotune can time them.
+        _algoCount = count;
+        _allAlgos = _algoBuffer[..(CuBlasNative.HeuristicResultSize * count)];
+
+        // One workspace large enough for any candidate.
+        nuint maxWorkspace = 0;
+        for (int i = 0; i < count; i++)
         {
-            byte[] first = new byte[CuBlasNative.HeuristicResultSize];
-            Array.Copy(_algoBuffer, 0, first, 0, CuBlasNative.HeuristicResultSize);
-            _algoBuffer = first;
+            maxWorkspace = Math.Max(maxWorkspace, CandidateWorkspace(i));
         }
 
-        // Extract workspace size from result (offset 64 in the struct layout)
-        _algoWorkspaceSize = (nuint)System.Runtime.InteropServices.MemoryMarshal
-            .Read<ulong>(_algoBuffer.AsSpan(64));
-
-        if (_algoWorkspaceSize > 0)
+        if (maxWorkspace > 0)
         {
-            _workspacePtr = (nint)CudaRuntime.Malloc(_algoWorkspaceSize);
+            _workspacePtr = (nint)CudaRuntime.Malloc(maxWorkspace);
         }
 
+        SelectAlgorithm(0);
         _planned = true;
     }
+
+    // Workspace size sits at offset 64 of cublasLtMatmulHeuristicResult_t (after the 64-byte algo).
+    private nuint CandidateWorkspace(int index) => (nuint)System.Runtime.InteropServices.MemoryMarshal
+        .Read<ulong>(_allAlgos.AsSpan(index * CuBlasNative.HeuristicResultSize + 64));
+
+    /// <summary>Number of candidate algorithms found by <see cref="Plan"/> (best-first).</summary>
+    public int AlgorithmCount => _algoCount;
+
+    /// <summary>Index of the algorithm that <see cref="Execute"/> uses (0 = heuristic's top choice).</summary>
+    public int SelectedAlgorithm { get; private set; }
+
+    /// <summary>
+    /// Selects which planned candidate algorithm <see cref="Execute"/> uses.
+    /// Request several candidates through <see cref="MatmulPlanPreferences.RequestedAlgoCount"/>.
+    /// </summary>
+    /// <param name="index">Candidate index in <c>[0, AlgorithmCount)</c>.</param>
+    public void SelectAlgorithm(int index)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        ArgumentOutOfRangeException.ThrowIfNegative(index);
+        ArgumentOutOfRangeException.ThrowIfGreaterThanOrEqual(index, _algoCount);
+
+        _algoBuffer = _allAlgos.AsSpan(index * CuBlasNative.HeuristicResultSize, CuBlasNative.HeuristicResultSize).ToArray();
+        _algoWorkspaceSize = CandidateWorkspace(index);
+        SelectedAlgorithm = index;
+    }
+
+    // ── Autotune ──────────────────────────────────────────────────────────────
+
+    /// <summary>
+    /// Times every candidate algorithm on the given operands and selects the fastest.
+    /// <b>D is overwritten</b> by the trial runs (and so is C when it aliases D), so run this on
+    /// scratch data or with <c>beta = 0</c> before the real computation.
+    /// </summary>
+    /// <param name="pA">Device pointer to A.</param>
+    /// <param name="pB">Device pointer to B.</param>
+    /// <param name="pC">Device pointer to C.</param>
+    /// <param name="pD">Device pointer to D.</param>
+    /// <param name="alpha">Scalar for the product.</param>
+    /// <param name="beta">Scalar for C.</param>
+    /// <param name="iterations">Timed runs per candidate (after one warm-up run).</param>
+    /// <returns>Average milliseconds per candidate; <see cref="float.PositiveInfinity"/> for candidates that failed.</returns>
+    public float[] Autotune(
+        nint pA, nint pB, nint pC, nint pD,
+        double alpha = 1.0, double beta = 0.0, int iterations = 3)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_planned)
+        {
+            throw new InvalidOperationException("Call Plan() or PlanAsync() before Autotune.");
+        }
+
+        ArgumentOutOfRangeException.ThrowIfLessThan(iterations, 1);
+
+        float[] times = new float[_algoCount];
+        using var start = new CudaEvent(disableTiming: false);
+        using var stop = new CudaEvent(disableTiming: false);
+        for (int i = 0; i < _algoCount; i++)
+        {
+            byte[] algo = _allAlgos.AsSpan(i * CuBlasNative.HeuristicResultSize, CuBlasNative.HeuristicResultSize).ToArray();
+            nuint workspace = CandidateWorkspace(i);
+            try
+            {
+                RunGemm(pA, pB, pC, pD, alpha, beta, algo, workspace); // warm-up
+                _ownedStream.Synchronize();
+                start.Record(_ownedStream);
+                for (int it = 0; it < iterations; it++)
+                {
+                    RunGemm(pA, pB, pC, pD, alpha, beta, algo, workspace);
+                }
+
+                stop.Record(_ownedStream);
+                _ownedStream.Synchronize();
+                times[i] = stop.ElapsedMilliseconds(start) / iterations;
+            }
+            catch (CuBlasException)
+            {
+                times[i] = float.PositiveInfinity;
+            }
+        }
+
+        SelectAlgorithm(Array.IndexOf(times, times.Min()));
+        return times;
+    }
+
+    /// <summary>Asynchronous version of <see cref="Autotune"/>.</summary>
+    public Task<float[]> AutotuneAsync(
+        nint pA, nint pB, nint pC, nint pD,
+        double alpha = 1.0, double beta = 0.0, int iterations = 3,
+        CancellationToken ct = default) =>
+        Task.Run(() => Autotune(pA, pB, pC, pD, alpha, beta, iterations), ct);
 
     // ── Execute ───────────────────────────────────────────────────────────────
 
@@ -327,7 +420,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     /// </summary>
     public void Execute(
         nint pA, nint pB, nint pC, nint pD,
-        float alpha = 1.0f, float beta = 0.0f)
+        double alpha = 1.0, double beta = 0.0)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         if (!_planned)
@@ -335,7 +428,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             throw new InvalidOperationException("Call Plan() or PlanAsync() before Execute.");
         }
 
-        RunGemm(pA, pB, pC, pD, alpha, beta);
+        RunGemm(pA, pB, pC, pD, alpha, beta, _algoBuffer!, _algoWorkspaceSize);
         if (_options.Blocking)
         {
             _ownedStream.Synchronize();
@@ -348,7 +441,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     /// </summary>
     public async Task ExecuteAsync(
         nint pA, nint pB, nint pC, nint pD,
-        float alpha = 1.0f, float beta = 0.0f,
+        double alpha = 1.0, double beta = 0.0,
         CancellationToken ct = default)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
@@ -357,29 +450,61 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             throw new InvalidOperationException("Call Plan() or PlanAsync() before Execute.");
         }
 
-        RunGemm(pA, pB, pC, pD, alpha, beta);
+        RunGemm(pA, pB, pC, pD, alpha, beta, _algoBuffer!, _algoWorkspaceSize);
         if (_options.Blocking)
         {
             await _ownedStream.SynchronizeAsync(ct).ConfigureAwait(false);
         }
     }
 
-    private unsafe void RunGemm(nint pA, nint pB, nint pC, nint pD, float alpha, float beta)
+    private unsafe void RunGemm(
+        nint pA, nint pB, nint pC, nint pD, double alpha, double beta,
+        byte[] algo, nuint workspaceSize)
     {
-        fixed (byte* pAlgo = _algoBuffer)
+        // cuBLASLt reads alpha/beta with the scale type, so encode them accordingly.
+        byte* a = stackalloc byte[8];
+        byte* b = stackalloc byte[8];
+        EncodeScalar(alpha, a);
+        EncodeScalar(beta, b);
+
+        fixed (byte* pAlgo = algo)
         {
             CuBlasNative.Matmul(
-            _ltHandle,
-            _matmulDesc,
-            &alpha,
-            (void*)pA, _layoutA,
-            (void*)pB, _layoutB,
-            &beta,
-            (void*)pC, _layoutC,
-            (void*)pD, _layoutD,
-            pAlgo,
-            (void*)_workspacePtr, _algoWorkspaceSize,
-            _ownedStream.Handle);
+                _ltHandle,
+                _matmulDesc,
+                a,
+                (void*)pA, _layoutA,
+                (void*)pB, _layoutB,
+                b,
+                (void*)pC, _layoutC,
+                (void*)pD, _layoutD,
+                pAlgo,
+                (void*)_workspacePtr, workspaceSize,
+                _ownedStream.Handle);
+        }
+    }
+
+    private unsafe void EncodeScalar(double value, byte* dst)
+    {
+        *(ulong*)dst = 0;
+        switch (_options.ScaleType)
+        {
+            case MatrixDataType.Float64:
+                *(double*)dst = value;
+                break;
+            case MatrixDataType.Float16:
+                *(Half*)dst = (Half)value;
+                break;
+            case MatrixDataType.BFloat16:
+                // bfloat16 is the upper 16 bits of an IEEE float32.
+                *(ushort*)dst = (ushort)(BitConverter.SingleToUInt32Bits((float)value) >> 16);
+                break;
+            case MatrixDataType.Int32:
+                *(int*)dst = (int)value;
+                break;
+            default:
+                *(float*)dst = (float)value;
+                break;
         }
     }
 
@@ -389,10 +514,10 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
     // ── Convenience overloads ─────────────────────────────────────────────────
 
-    /// <inheritdoc cref="ExecuteAsync(nint, nint, nint, nint, float, float, CancellationToken)"/>
+    /// <inheritdoc cref="ExecuteAsync(nint, nint, nint, nint, double, double, CancellationToken)"/>
     public Task ExecuteAsync<T>(
         DeviceBuffer<T> a, DeviceBuffer<T> b, DeviceBuffer<T> c, DeviceBuffer<T> d,
-        float alpha = 1.0f, float beta = 0.0f,
+        double alpha = 1.0, double beta = 0.0,
         CancellationToken ct = default) where T : unmanaged, INumberBase<T>
         => ExecuteAsync(a.PointerAsInt, b.PointerAsInt, c.PointerAsInt, d.PointerAsInt, alpha, beta, ct);
 
