@@ -22,3 +22,5 @@ Stateless helpers for cuSOLVER dense operations.
 | `Task<int[]> CholeskyBatchedAsync<T>(DeviceBuffer<T> a, int n, int batchCount, bool upper = false, ...)` | Cholesky of a packed batch of SPD matrices; returns a per-matrix status (positive = not positive definite). |
 
 The `<T>` methods accept `float` or `double`. They check cuSOLVER's `devInfo` and throw `InvalidOperationException` for illegal arguments; the older overloads above do not check `devInfo`.
+| `Task<int[]> LuFactorBatchedAsync<T>(DeviceBuffer<T> a, DeviceBuffer<int> ipiv, int n, int batchCount, ...)` | Batched LU (cuBLAS `getrfBatched`) of packed n×n matrices; returns a per-matrix status (positive = singular). `ipiv` holds `batchCount·n` entries. |
+| `Task LuSolveBatchedAsync<T>(DeviceBuffer<T> a, DeviceBuffer<int> ipiv, DeviceBuffer<T> b, int n, int nrhs, int batchCount, bool transpose = false, ...)` | Batched solve from the factors; `b` holds `batchCount·n·nrhs` values. |
