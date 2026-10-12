@@ -14,7 +14,7 @@ namespace NVMathNet.LinAlg;
 /// <list type="number">
 ///   <item><description>Construct with dimension info and options.</description></item>
 ///   <item><description>Call <see cref="PlanAsync"/> to select an algorithm.</description></item>
-///   <item><description>Call <see cref="ExecuteAsync"/> (possibly multiple times).</description></item>
+///   <item><description>Call <see cref="ExecuteAsync(nint, nint, nint, nint, double, double, CancellationToken)"/> (possibly multiple times).</description></item>
 ///   <item><description>Dispose to free CUDA resources.</description></item>
 /// </list>
 /// Computes: D = alpha * op(A) * op(B) + beta * C
@@ -41,6 +41,10 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     // ── Workspace ─────────────────────────────────────────────────────────────
 
     private nint   _workspacePtr;
+    private nint _biasPointer;
+    private nint _auxPointer;
+    private long _auxLd;
+    private bool _hasScalePointers;
     private Workspace _workspace;
 
     // ── cuBLASLt attribute IDs (see cublasLt.h) ───────────────────────────────
@@ -110,22 +114,21 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
         _matmulDesc = CuBlasNative.MatmulDescCreate((CuBlasComputeType)computeType, (CudaDataType)scaleType);
 
-        // Set transpose operations
-        if (_options.TransposeA)
+        // Operations on A and B: none, transpose or conjugate transpose.
+        int opA = _options.ConjugateTransposeA ? (int)CuBlasOperation.ConjTranspose
+            : _options.TransposeA ? (int)CuBlasOperation.Transpose : (int)CuBlasOperation.None;
+        int opB = _options.ConjugateTransposeB ? (int)CuBlasOperation.ConjTranspose
+            : _options.TransposeB ? (int)CuBlasOperation.Transpose : (int)CuBlasOperation.None;
+        bool transA = opA != (int)CuBlasOperation.None;
+        bool transB = opB != (int)CuBlasOperation.None;
+        if (transA)
         {
-            int opT = (int)CuBlasOperation.Transpose;
-            CuBlasNative.MatmulDescSetAttribute(
-                _matmulDesc,
-                DescTransA,
-                &opT, sizeof(int));
+            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescTransA, &opA, sizeof(int));
         }
-        if (_options.TransposeB)
+
+        if (transB)
         {
-            int opT = (int)CuBlasOperation.Transpose;
-            CuBlasNative.MatmulDescSetAttribute(
-                _matmulDesc,
-                DescTransB,
-                &opT, sizeof(int));
+            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescTransB, &opB, sizeof(int));
         }
 
         // Set epilog
@@ -138,16 +141,16 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
                 &epilog, sizeof(int));
         }
 
-        long ldA = _options.TransposeA ? _k : _m;
-        long ldB = _options.TransposeB ? _n : _k;
+        long ldA = transA ? _k : _m;
+        long ldB = transB ? _n : _k;
         long ldC = _m;
 
         // Layout describes the physical (pre-transpose) matrix in memory.
         // When transposed, rows and cols of the stored matrix are swapped.
-        _layoutA = _options.TransposeA
+        _layoutA = transA
             ? CuBlasNative.MatrixLayoutCreate((CudaDataType)typeA, (ulong)_k, (ulong)_m, ldA)
             : CuBlasNative.MatrixLayoutCreate((CudaDataType)typeA, (ulong)_m, (ulong)_k, ldA);
-        _layoutB = _options.TransposeB
+        _layoutB = transB
             ? CuBlasNative.MatrixLayoutCreate((CudaDataType)typeB, (ulong)_n, (ulong)_k, ldB)
             : CuBlasNative.MatrixLayoutCreate((CudaDataType)typeB, (ulong)_k, (ulong)_n, ldB);
         _layoutC = CuBlasNative.MatrixLayoutCreate((CudaDataType)typeC, (ulong)_m, (ulong)_n, ldC);
@@ -188,7 +191,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     /// <summary>
     /// Sets the device pointers to the scalar scale factors used by FP8 matmul
     /// and the optional <c>amax(D)</c> output. Pass <c>0</c> to leave a pointer
-    /// unchanged. Call before <see cref="Execute"/>.
+    /// unchanged. Call before <see cref="Execute(nint, nint, nint, nint, double, double)"/>.
     /// </summary>
     /// <param name="aScale">Device pointer to the float scale of A.</param>
     /// <param name="bScale">Device pointer to the float scale of B.</param>
@@ -203,6 +206,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         SetPointerAttr(DescCScalePointer, cScale);
         SetPointerAttr(DescDScalePointer, dScale);
         SetPointerAttr(DescAmaxDPointer, amaxD);
+        _hasScalePointers = (aScale | bScale | cScale | dScale | amaxD) != 0;
     }
 
     /// <summary>
@@ -215,6 +219,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         SetPointerAttr(DescBiasPointer, bias);
+        _biasPointer = bias;
         if (biasType is { } t)
         {
             int dt = (int)t;
@@ -243,6 +248,8 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         SetPointerAttr(DescEpilogueAuxPointer, aux);
+        _auxPointer = aux;
+        _auxLd = ld;
         CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescEpilogueAuxLd, &ld, sizeof(long));
         if (auxType is { } t)
         {
@@ -325,20 +332,40 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         }
 
         int algoCount = prefs?.RequestedAlgoCount ?? 1;
-        _algoBuffer = new byte[CuBlasNative.HeuristicResultSize * algoCount];
-        int count = CuBlasNative.MatmulAlgoGetHeuristic(
-            _ltHandle, _matmulDesc,
-            _layoutA, _layoutB, _layoutC, _layoutD,
-            _preference, algoCount, _algoBuffer);
-
-        if (count == 0)
+        int count;
+        int cachedSelection = 0;
+        _cacheKey = MatmulPlanCache.Enabled ? BuildCacheKey(prefs, algoCount) : null;
+        if (_cacheKey is not null && MatmulPlanCache.TryGet(_cacheKey, out var cached))
         {
-            throw new InvalidOperationException("No cuBLASLt algorithm found for the given matmul configuration.");
+            // Reuse the heuristic result (and any autotuned choice) of an identical earlier plan.
+            _algoBuffer = new byte[CuBlasNative.HeuristicResultSize];
+            _allAlgos = cached.Algorithms;
+            count = cached.Count;
+            cachedSelection = cached.Selected;
+            _algoCount = count;
+            NVMathLog.Debug("Matmul", () => $"Plan cache hit for {_m}x{_n}x{_k} (batch {_batchCount}); selected algorithm #{cachedSelection}.");
         }
+        else
+        {
+            _algoBuffer = new byte[CuBlasNative.HeuristicResultSize * algoCount];
+            count = CuBlasNative.MatmulAlgoGetHeuristic(
+                _ltHandle, _matmulDesc,
+                _layoutA, _layoutB, _layoutC, _layoutD,
+                _preference, algoCount, _algoBuffer);
 
-        // Keep every candidate (ordered best-first by the heuristic) so Autotune can time them.
-        _algoCount = count;
-        _allAlgos = _algoBuffer[..(CuBlasNative.HeuristicResultSize * count)];
+            if (count == 0)
+            {
+                throw new InvalidOperationException("No cuBLASLt algorithm found for the given matmul configuration.");
+            }
+
+            // Keep every candidate (ordered best-first by the heuristic) so Autotune can time them.
+            _algoCount = count;
+            _allAlgos = _algoBuffer[..(CuBlasNative.HeuristicResultSize * count)];
+            if (_cacheKey is not null)
+            {
+                MatmulPlanCache.Store(_cacheKey, _allAlgos, count);
+            }
+        }
 
         // One workspace large enough for any candidate.
         nuint maxWorkspace = 0;
@@ -354,8 +381,24 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         }
 
         NVMathLog.Debug("Matmul", () => $"Planned {_m}x{_n}x{_k} (batch {_batchCount}): {count} candidate algorithm(s), workspace {maxWorkspace} bytes.");
-        SelectAlgorithm(0);
+        SelectAlgorithm(cachedSelection);
         _planned = true;
+    }
+
+    private string? _cacheKey;
+
+    private unsafe string BuildCacheKey(MatmulPlanPreferences? prefs, int requested)
+    {
+        // Anything that can change the heuristic's answer: shape, types, operations, epilog, alignment
+        // of the epilog pointers and the planning preferences.
+        var o = _options;
+        string pointers = $"{(_biasPointer != 0 ? 1 : 0)}{(_biasPointer % 16 == 0 ? 1 : 0)}{(_auxPointer != 0 ? 1 : 0)}{(_auxPointer % 16 == 0 ? 1 : 0)}{(_hasScalePointers ? 1 : 0)}";
+        return string.Join('|',
+            CudaRuntime.GetDevice(), _m, _n, _k, _batchCount,
+            (int)o.ComputeType, (int)o.ScaleType, (int)o.TypeA, (int)o.TypeB, (int)o.TypeC, (int)o.TypeD,
+            (int)o.Epilog, o.TransposeA, o.TransposeB, o.ConjugateTransposeA, o.ConjugateTransposeB, o.FastAccum,
+            o.MaxWorkspaceBytes, prefs?.MaxWorkspaceBytes?.ToString() ?? "-", prefs?.NumericalImplMask ?? 0, requested,
+            pointers, _auxLd);
     }
 
     // Workspace size sits at offset 64 of cublasLtMatmulHeuristicResult_t (after the 64-byte algo).
@@ -365,11 +408,11 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     /// <summary>Number of candidate algorithms found by <see cref="Plan"/> (best-first).</summary>
     public int AlgorithmCount => _algoCount;
 
-    /// <summary>Index of the algorithm that <see cref="Execute"/> uses (0 = heuristic's top choice).</summary>
+    /// <summary>Index of the algorithm that <see cref="Execute(nint, nint, nint, nint, double, double)"/> uses (0 = heuristic's top choice).</summary>
     public int SelectedAlgorithm { get; private set; }
 
     /// <summary>
-    /// Selects which planned candidate algorithm <see cref="Execute"/> uses.
+    /// Selects which planned candidate algorithm <see cref="Execute(nint, nint, nint, nint, double, double)"/> uses.
     /// Request several candidates through <see cref="MatmulPlanPreferences.RequestedAlgoCount"/>.
     /// </summary>
     /// <param name="index">Candidate index in <c>[0, AlgorithmCount)</c>.</param>
@@ -420,12 +463,12 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             nuint workspace = CandidateWorkspace(i);
             try
             {
-                RunGemm(pA, pB, pC, pD, alpha, beta, algo, workspace); // warm-up
+                RunGemm(pA, pB, pC, pD, new Complex(alpha, 0), new Complex(beta, 0), algo, workspace); // warm-up
                 _ownedStream.Synchronize();
                 start.Record(_ownedStream);
                 for (int it = 0; it < iterations; it++)
                 {
-                    RunGemm(pA, pB, pC, pD, alpha, beta, algo, workspace);
+                    RunGemm(pA, pB, pC, pD, new Complex(alpha, 0), new Complex(beta, 0), algo, workspace);
                 }
 
                 stop.Record(_ownedStream);
@@ -439,6 +482,11 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         }
 
         SelectAlgorithm(Array.IndexOf(times, times.Min()));
+        if (_cacheKey is not null)
+        {
+            MatmulPlanCache.UpdateSelected(_cacheKey, SelectedAlgorithm);
+        }
+
         NVMathLog.Info("Matmul", () => $"Autotuned {_algoCount} candidate(s) over {iterations} iteration(s); selected #{SelectedAlgorithm} ({times[SelectedAlgorithm]:F3} ms): [{string.Join(", ", times.Select(t => t.ToString("F3")))}] ms.");
         return times;
     }
@@ -454,7 +502,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Executes D = alpha*op(A)*op(B) + beta*C on device buffers.
-    /// Prefer <see cref="ExecuteAsync"/> in async contexts.
+    /// Prefer <see cref="ExecuteAsync(nint, nint, nint, nint, double, double, CancellationToken)"/> in async contexts.
     /// </summary>
     public void Execute(
         nint pA, nint pB, nint pC, nint pD,
@@ -466,7 +514,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             throw new InvalidOperationException("Call Plan() or PlanAsync() before Execute.");
         }
 
-        RunGemm(pA, pB, pC, pD, alpha, beta, _algoBuffer!, _algoWorkspaceSize);
+        RunGemm(pA, pB, pC, pD, new Complex(alpha, 0), new Complex(beta, 0), _algoBuffer!, _algoWorkspaceSize);
         if (_options.Blocking)
         {
             _ownedStream.Synchronize();
@@ -488,6 +536,43 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
             throw new InvalidOperationException("Call Plan() or PlanAsync() before Execute.");
         }
 
+        RunGemm(pA, pB, pC, pD, new Complex(alpha, 0), new Complex(beta, 0), _algoBuffer!, _algoWorkspaceSize);
+        if (_options.Blocking)
+        {
+            await _ownedStream.SynchronizeAsync(ct).ConfigureAwait(false);
+        }
+    }
+
+    /// <summary>
+    /// Executes D = alpha*op(A)*op(B) + beta*C with complex scalars (for complex data types and
+    /// <see cref="MatrixDataType.Complex64"/> / <see cref="MatrixDataType.Complex128"/> scale types).
+    /// For real scale types only the real part is used.
+    /// </summary>
+    public void Execute(nint pA, nint pB, nint pC, nint pD, Complex alpha, Complex beta)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_planned)
+        {
+            throw new InvalidOperationException("Call Plan() or PlanAsync() before Execute.");
+        }
+
+        RunGemm(pA, pB, pC, pD, alpha, beta, _algoBuffer!, _algoWorkspaceSize);
+        if (_options.Blocking)
+        {
+            _ownedStream.Synchronize();
+        }
+    }
+
+    /// <inheritdoc cref="Execute(nint, nint, nint, nint, Complex, Complex)"/>
+    public async Task ExecuteAsync(
+        nint pA, nint pB, nint pC, nint pD, Complex alpha, Complex beta, CancellationToken ct = default)
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (!_planned)
+        {
+            throw new InvalidOperationException("Call Plan() or PlanAsync() before Execute.");
+        }
+
         RunGemm(pA, pB, pC, pD, alpha, beta, _algoBuffer!, _algoWorkspaceSize);
         if (_options.Blocking)
         {
@@ -495,13 +580,21 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         }
     }
 
+    /// <inheritdoc cref="Execute(nint, nint, nint, nint, Complex, Complex)"/>
+    public Task ExecuteAsync<T>(
+        DeviceBuffer<T> a, DeviceBuffer<T> b, DeviceBuffer<T> c, DeviceBuffer<T> d,
+        Complex alpha, Complex beta, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+        => ExecuteAsync(a.PointerAsInt, b.PointerAsInt, c.PointerAsInt, d.PointerAsInt, alpha, beta, ct);
+
     private unsafe void RunGemm(
-        nint pA, nint pB, nint pC, nint pD, double alpha, double beta,
+        nint pA, nint pB, nint pC, nint pD, Complex alpha, Complex beta,
         byte[] algo, nuint workspaceSize)
     {
-        // cuBLASLt reads alpha/beta with the scale type, so encode them accordingly.
-        byte* a = stackalloc byte[8];
-        byte* b = stackalloc byte[8];
+        // cuBLASLt reads alpha/beta with the scale type, so encode them accordingly. Complex scale types
+        // (cuDoubleComplex) must be 16-byte aligned.
+        Span<byte> aStore = stackalloc byte[AlignedScalar.StorageSize], bStore = stackalloc byte[AlignedScalar.StorageSize];
+        byte* a = AlignedScalar.Store(aStore, (byte)0);
+        byte* b = AlignedScalar.Store(bStore, (byte)0);
         EncodeScalar(alpha, a);
         EncodeScalar(beta, b);
 
@@ -522,9 +615,11 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         }
     }
 
-    private unsafe void EncodeScalar(double value, byte* dst)
+    private unsafe void EncodeScalar(Complex scalar, byte* dst)
     {
         *(ulong*)dst = 0;
+        *((ulong*)dst + 1) = 0;
+        double value = scalar.Real;
         switch (_options.ScaleType)
         {
             case MatrixDataType.Float64:
@@ -539,6 +634,14 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
                 break;
             case MatrixDataType.Int32:
                 *(int*)dst = (int)value;
+                break;
+            case MatrixDataType.Complex64:
+                *(float*)dst = (float)scalar.Real;
+                *((float*)dst + 1) = (float)scalar.Imaginary;
+                break;
+            case MatrixDataType.Complex128:
+                *(double*)dst = scalar.Real;
+                *((double*)dst + 1) = scalar.Imaginary;
                 break;
             default:
                 *(float*)dst = (float)value;

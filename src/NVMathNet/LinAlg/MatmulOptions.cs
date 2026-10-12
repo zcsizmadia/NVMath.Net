@@ -66,6 +66,10 @@ public enum MatrixDataType
     Float32  = 0,
     /// <summary>64-bit IEEE floating-point (double precision).</summary>
     Float64  = 1,
+    /// <summary>Complex number of two 32-bit floats (<c>cuComplex</c>).</summary>
+    Complex64  = 4,
+    /// <summary>Complex number of two 64-bit doubles (<c>cuDoubleComplex</c>, <see cref="System.Numerics.Complex"/>).</summary>
+    Complex128 = 5,
     /// <summary>8-bit signed integer.</summary>
     Int8     = 3,
     /// <summary>32-bit signed integer.</summary>
@@ -118,6 +122,18 @@ public sealed class MatmulOptions
 
     /// <summary>Whether to transpose matrix B.  Default: <c>false</c>.</summary>
     public bool TransposeB { get; set; }
+
+    /// <summary>
+    /// Use the conjugate transpose of A (complex types). Implies a transpose and takes precedence over
+    /// <see cref="TransposeA"/>.
+    /// </summary>
+    public bool ConjugateTransposeA { get; set; }
+
+    /// <summary>
+    /// Use the conjugate transpose of B (complex types). Implies a transpose and takes precedence over
+    /// <see cref="TransposeB"/>.
+    /// </summary>
+    public bool ConjugateTransposeB { get; set; }
 
     /// <summary>
     /// If <c>true</c> (default), execution waits for the GPU to finish before returning.
