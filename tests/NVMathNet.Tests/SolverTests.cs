@@ -1,4 +1,4 @@
-// Copyright (c) 2026 NVMath.Net Contributors. All rights reserved.
+// Copyright (c) 2026 Zoltan Csizmadia. All rights reserved.
 // Licensed under the MIT License.
 
 using NVMathNet.Solver;
