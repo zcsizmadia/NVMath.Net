@@ -16,6 +16,12 @@ GPU random number generator backed by cuRAND.
 | `void FillNormal(DeviceBuffer<double> buffer, double mean = 0, double stddev = 1)` | Double-precision normal. |
 | `Task FillNormalAsync(DeviceBuffer<float> buffer, float mean = 0, float stddev = 1, ...)` | Async normal fill. |
 | `void FillLogNormal(DeviceBuffer<float> buffer, float mean = 0, float stddev = 1)` | Log-normal distribution. |
+| `void FillUInt32(DeviceBuffer<uint> buffer)` / `Task FillUInt32Async(...)` | Uniform 32-bit unsigned integers. |
+| `void FillUInt64(DeviceBuffer<ulong> buffer)` / `Task FillUInt64Async(...)` | Uniform 64-bit integers (64-bit quasirandom generators only). |
+| `void FillPoisson(DeviceBuffer<uint> buffer, double lambda)` / `Task FillPoissonAsync(...)` | Poisson-distributed integers with mean `lambda` (> 0). |
+| `void SetOffset(ulong offset)` | Skip ahead in the sequence (Philox, XORWOW, MRG32k3a, Sobol). |
+| `void SetQuasiRandomDimensions(uint dimensions)` | Number of dimensions for a quasirandom generator. |
+| `CuRandRngType RngType`, `bool IsQuasiRandom` | Generator algorithm. Quasirandom generators reject a non-zero `seed`. |
 
 ## `CuRandRngType` (enum)
 

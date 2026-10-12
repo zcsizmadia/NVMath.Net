@@ -66,7 +66,7 @@ public enum CuRandRngType : int
 /// <summary>
 /// Raw P/Invoke bindings for cuRAND.
 /// </summary>
-public static unsafe class CuRandNative
+public static unsafe partial class CuRandNative
 {
     private const string LibWindows = "curand64_10.dll";
     private const string LibLinux   = "libcurand.so.10";
