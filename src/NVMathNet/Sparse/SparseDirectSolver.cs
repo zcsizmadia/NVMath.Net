@@ -16,6 +16,10 @@ public enum SparseMatrixStructure
     Symmetric = 1,
     /// <summary>Symmetric positive-definite matrix: Cholesky factorisation.</summary>
     SymmetricPositiveDefinite = 3,
+    /// <summary>Hermitian matrix (complex element types): LDL^H factorisation.</summary>
+    Hermitian = 2,
+    /// <summary>Hermitian positive-definite matrix (complex element types): Cholesky factorisation.</summary>
+    HermitianPositiveDefinite = 4,
 }
 
 /// <summary>Which part of the matrix is stored in the CSR arrays.</summary>
@@ -57,7 +61,7 @@ public sealed class DirectSolverOptions
 /// Requires the cuDSS runtime library (<c>cudss64_0.dll</c> / <c>libcudss.so.0</c>) on the library path.
 /// The CSR matrix must have sorted column indices and must outlive this solver.
 /// </summary>
-/// <typeparam name="T"><see cref="float"/> or <see cref="double"/>.</typeparam>
+/// <typeparam name="T"><see cref="float"/>, <see cref="double"/> or <see cref="System.Numerics.Complex"/> (double-precision complex; use the Hermitian structures for Hermitian matrices).</typeparam>
 public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INumberBase<T>
 {
     private readonly CsrMatrix<T> _matrix;
@@ -86,7 +90,8 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
 
         _valueType = typeof(T) == typeof(float) ? CuDssDataType.R32F
             : typeof(T) == typeof(double) ? CuDssDataType.R64F
-            : throw new NotSupportedException($"Element type {typeof(T)} is not supported; use float or double.");
+            : typeof(T) == typeof(System.Numerics.Complex) ? CuDssDataType.C64F
+            : throw new NotSupportedException($"Element type {typeof(T)} is not supported; use float, double or System.Numerics.Complex.");
 
         options ??= new DirectSolverOptions();
         _matrix = matrix;

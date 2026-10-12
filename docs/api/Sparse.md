@@ -85,3 +85,9 @@ solver.Refactorize();       // reuses the analysis
 | `new CsrMatrix<T>(..., long? nnz)` | Optional explicit non-zero count, for matrices backed by placeholder buffers. |
 
 SpGEMM and SDDMM are only available for CSR matrices — cuSPARSE does not provide COO or BSR variants of these operations.
+
+### Complex values
+
+Sparse matrices and operations accept `System.Numerics.Complex` (double-precision complex) in addition to `float`, `double` and `Half`. Scalars for complex matrices are passed with the `T`-typed overloads, for example `SpMVAsync(matrix, x, y, alpha: new Complex(0, 2), beta: Complex.One)`; the `float` overloads still work and convert to `Complex`. `SparseDirectSolver<Complex>` additionally supports `SparseMatrixStructure.Hermitian` and `HermitianPositiveDefinite`. .NET has no single-precision complex type, so complex64 is not offered.
+
+cuSPARSE provides triangular solves (`SpSV`/`SpSM`) only for CSR and COO matrices, so BSR matrices support `SpMV` and `SpMM` only.
