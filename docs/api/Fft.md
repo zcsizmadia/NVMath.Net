@@ -1,5 +1,9 @@
 # FFT — `NVMathNet.Fft`
 
+## Memory layout
+
+Unlike the BLAS-style modules, FFT shapes are **row-major** (cuFFT convention): in a shape such as `[batch, n]` the **last** axis is contiguous in memory. `axes` selects the dimensions to transform; they must be ascending, contiguous and include the first or last dimension. Transforming a leading axis (for example `shape [8, 3]`, `axes [0]`) uses a strided layout. For R2C the shape is the real input; for C2R it is the real output, and the half-spectrum has `n/2 + 1` bins along the last transformed axis.
+
 ## Enums
 
 ```csharp

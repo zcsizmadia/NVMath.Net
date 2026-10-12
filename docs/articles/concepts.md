@@ -16,11 +16,14 @@ buf.Clear();                      // zero fill
 `PointerAsInt` / `Pointer` expose the raw device pointer for interop with other CUDA code. Pinned host memory
 for faster transfers is available as `PinnedBuffer<T>`.
 
-## Layout: column-major
+## Layout: column-major, except FFT
 
 Matrices and tensors are **column-major** (the first index varies fastest), matching cuBLAS, cuSOLVER and cuSPARSE.
 For tensors the same rule holds: the first mode has stride 1. Dense matrices passed to sparse routines
 (`SpMM`, `SpSM`, …) are column-major too.
+
+The **FFT module is the exception**: it follows cuFFT, so a shape such as `[batch, n]` is **row-major** — the *last* axis
+is contiguous in memory, and `axes` selects which of those dimensions are transformed. See the [FFT guide](../api/Fft.md).
 
 ## Streams, async and blocking
 

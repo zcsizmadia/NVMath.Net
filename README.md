@@ -58,7 +58,7 @@ or add a project reference to `src/NVMathNet/NVMathNet.csproj`.
 
 ## Quick start
 
-Matrices and tensors are **column-major** (the cuBLAS convention). Always dispose GPU resources (`using`).
+Matrices and tensors are **column-major** (the cuBLAS convention); FFT shapes are **row-major** (the last axis is contiguous). Always dispose GPU resources (`using`).
 
 ### FFT
 
@@ -197,7 +197,7 @@ await ctx.ForEachDeviceAsync(async (index, deviceId, stream) =>
   [Tensor](https://github.com/zcsizmadia/NVMath.Net/blob/main/docs/api/Tensor.md) ·
   [Solver](https://github.com/zcsizmadia/NVMath.Net/blob/main/docs/api/Solver.md) ·
   [Random](https://github.com/zcsizmadia/NVMath.Net/blob/main/docs/api/Rand.md)
-- **Samples:** runnable projects in [`samples/`](https://github.com/zcsizmadia/NVMath.Net/tree/main/samples).
+- **Samples:** 15 runnable projects in [`samples/`](https://github.com/zcsizmadia/NVMath.Net/tree/main/samples), indexed in the [samples guide](https://zcsizmadia.github.io/NVMath.Net/articles/samples.html); they verify their own results.
 
 To build the documentation site locally:
 
