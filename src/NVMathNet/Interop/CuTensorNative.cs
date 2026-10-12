@@ -28,53 +28,88 @@ public enum CuTensorStatus : int
     NotSupported             = 15,
     /// <summary>cuTENSOR license check failed.</summary>
     LicenseError             = 16,
+    /// <summary>An underlying cuBLAS error occurred.</summary>
+    CublasError              = 17,
     /// <summary>An underlying CUDA error occurred.</summary>
-    CudaError                = 17,
+    CudaError                = 18,
     /// <summary>Workspace buffer is too small.</summary>
-    InsufficientWorkspace    = 18,
+    InsufficientWorkspace    = 19,
     /// <summary>CUDA driver version is below the minimum required.</summary>
-    InsufficientDriver       = 19,
+    InsufficientDriver       = 20,
     /// <summary>File I/O error (e.g. kernel cache).</summary>
-    IoError                  = 20,
+    IoError                  = 21,
 }
 
-/// <summary>cuTENSOR element-wise unary operator applied during tensor operations.</summary>
+/// <summary>
+/// cuTENSOR operators: unary operators applied to individual operands and binary operators
+/// that combine two operands. Values match <c>cutensorOperator_t</c> in <c>cutensor/types.h</c>.
+/// </summary>
 public enum CuTensorOperator : int
 {
     /// <summary>No-op — pass the element through unchanged.</summary>
-    Identity     = 1,
+    Identity = 1,
     /// <summary>Element-wise square root.</summary>
-    Sqrt         = 2,
+    Sqrt = 2,
     /// <summary>Element-wise ReLU activation.</summary>
-    Relu         = 8,
+    Relu = 8,
     /// <summary>Complex conjugate.</summary>
-    Conj         = 9,
-    /// <summary>Reciprocal square root.</summary>
-    RcpSqrt      = 3,
-    /// <summary>Element-wise sine.</summary>
-    Sin          = 4,
+    Conj = 9,
     /// <summary>Element-wise reciprocal.</summary>
-    Rcp          = 5,
-    /// <summary>Sigmoid activation.</summary>
-    Sigmoid      = 6,
+    Rcp = 10,
+    /// <summary>Sigmoid activation, <c>1/(1+exp(-x))</c>.</summary>
+    Sigmoid = 11,
     /// <summary>Hyperbolic tangent activation.</summary>
-    Tanh         = 7,
+    Tanh = 12,
     /// <summary>Element-wise natural exponent.</summary>
-    Exp          = 22,
+    Exp = 22,
     /// <summary>Element-wise natural logarithm.</summary>
-    Log          = 23,
+    Log = 23,
     /// <summary>Element-wise absolute value.</summary>
-    Abs          = 24,
+    Abs = 24,
     /// <summary>Element-wise negation.</summary>
-    Neg          = 25,
+    Neg = 25,
+    /// <summary>Element-wise sine.</summary>
+    Sin = 26,
+    /// <summary>Element-wise cosine.</summary>
+    Cos = 27,
+    /// <summary>Element-wise tangent.</summary>
+    Tan = 28,
+    /// <summary>Hyperbolic sine.</summary>
+    Sinh = 29,
+    /// <summary>Hyperbolic cosine.</summary>
+    Cosh = 30,
+    /// <summary>Inverse sine.</summary>
+    Asin = 31,
+    /// <summary>Inverse cosine.</summary>
+    Acos = 32,
+    /// <summary>Inverse tangent.</summary>
+    Atan = 33,
+    /// <summary>Inverse hyperbolic sine.</summary>
+    Asinh = 34,
+    /// <summary>Inverse hyperbolic cosine.</summary>
+    Acosh = 35,
+    /// <summary>Inverse hyperbolic tangent.</summary>
+    Atanh = 36,
+    /// <summary>Ceiling.</summary>
+    Ceil = 37,
+    /// <summary>Floor.</summary>
+    Floor = 38,
+    /// <summary>Mish, <c>x·tanh(softplus(x))</c>.</summary>
+    Mish = 39,
+    /// <summary>Swish, <c>x·sigmoid(x)</c>.</summary>
+    Swish = 40,
+    /// <summary>Softplus, <c>log(exp(x)+1)</c>.</summary>
+    SoftPlus = 41,
+    /// <summary>Softsign, <c>x/(abs(x)+1)</c>.</summary>
+    SoftSign = 42,
     /// <summary>Binary addition (for fused operations).</summary>
-    Add          = 10,
+    Add = 3,
     /// <summary>Binary multiplication (for fused operations).</summary>
-    Mul          = 16,
+    Mul = 5,
     /// <summary>Binary maximum.</summary>
-    Max          = 26,
+    Max = 6,
     /// <summary>Binary minimum.</summary>
-    Min          = 27,
+    Min = 7,
 }
 
 /// <summary>cuTENSOR contraction algorithms.</summary>

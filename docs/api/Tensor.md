@@ -45,7 +45,7 @@ Stateful cuTENSOR v2 contraction wrapper. Implements `IAsyncDisposable`, `IDispo
 Stateful cuTENSOR v2 element-wise trinary: `D = opABC(α·opA(A), opAB(β·opB(B), γ·opC(C)))`.
 Implements `IAsyncDisposable`, `IDisposable`.
 
-Available operators: `Identity`, `Sqrt`, `ReLU`, `Conj`, `RcpSqrt`, `Sin`, `Rcp`, `Sigmoid`, `Tanh`, `Exp`, `Log`, `Abs`, `Neg`, `Add`, `Mul`, `Max`, `Min`.
+Unary operators: `Identity`, `Sqrt`, `Relu`, `Conj`, `Rcp`, `Sigmoid`, `Tanh`, `Exp`, `Log`, `Abs`, `Neg`, `Sin`, `Cos`, `Tan`, `Sinh`, `Cosh`, `Asin`, `Acos`, `Atan`, `Asinh`, `Acosh`, `Atanh`, `Ceil`, `Floor`, `Mish`, `Swish`, `SoftPlus`, `SoftSign`. Binary operators (for `opAB` / `opABC`): `Add`, `Mul`, `Max`, `Min`. Values match `cutensor/types.h`. Scalars (`alpha`, `beta`, `gamma`) are encoded as half, float or double according to the data type's compute descriptor.
 
 | Member | Description |
 |---|---|

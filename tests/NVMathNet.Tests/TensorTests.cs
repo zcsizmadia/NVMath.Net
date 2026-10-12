@@ -1,6 +1,7 @@
 // Copyright (c) 2026 NVMath.Net Contributors. All rights reserved.
 // Licensed under the MIT License.
 
+using NVMathNet.Interop;
 using NVMathNet.Tensor;
 
 namespace NVMathNet.Tests;
@@ -185,6 +186,131 @@ public sealed class TensorTests
         {
             float err = Math.Abs(result[i] - expected[i]);
             await Assert.That(err).IsLessThan(1e-1f);
+        }
+    }
+
+    // ── Element-wise trinary and operator values ─────────────────────────────
+
+    private static async Task<T[]> RunTrinary<T>(
+        T[] a, T[] b, T[] c, TensorDataType type,
+        CuTensorOperator opA, CuTensorOperator opB, CuTensorOperator opC,
+        CuTensorOperator opAB, CuTensorOperator opABC,
+        double alpha, double beta, double gamma) where T : unmanaged, System.Numerics.INumberBase<T>
+    {
+        int n = a.Length;
+        using var dA = new DeviceBuffer<T>(n);
+        using var dB = new DeviceBuffer<T>(n);
+        using var dC = new DeviceBuffer<T>(n);
+        using var dD = new DeviceBuffer<T>(n);
+        dA.CopyFrom(a.AsSpan());
+        dB.CopyFrom(b.AsSpan());
+        dC.CopyFrom(c.AsSpan());
+        dD.Clear();
+
+        long[] ext = [4, n / 4];
+        int[] modes = [0, 1];
+        using var op = new ElementwiseTrinary(
+            ext, modes, ext, modes, ext, modes, ext, modes,
+            type, opA, opB, opC, opAB, opABC,
+            new TensorContractionOptions { Blocking = true });
+        await op.ExecuteAsync(dA, dB, dC, dD, alpha, beta, gamma);
+        return dD.ToArray();
+    }
+
+    private static readonly float[] SampleA = [.. Enumerable.Range(0, 16).Select(i => (i - 6) * 0.5f)];
+    private static readonly float[] SampleB = [.. Enumerable.Range(0, 16).Select(i => (i % 5) * 0.25f)];
+    private static readonly float[] SampleC = [.. Enumerable.Range(0, 16).Select(i => 1f - i * 0.125f)];
+
+    [Test]
+    public async Task ElementwiseTrinary_Add_ComputesWeightedSum()
+    {
+        float[] d = await RunTrinary(SampleA, SampleB, SampleC, TensorDataType.Float32,
+            CuTensorOperator.Identity, CuTensorOperator.Identity, CuTensorOperator.Identity,
+            CuTensorOperator.Add, CuTensorOperator.Add, 2.0, 3.0, 4.0);
+
+        for (int i = 0; i < d.Length; i++)
+        {
+            await Assert.That(Math.Abs(d[i] - (2 * SampleA[i] + 3 * SampleB[i] + 4 * SampleC[i]))).IsLessThan(1e-5f);
+        }
+    }
+
+    [Test]
+    public async Task ElementwiseTrinary_MaxThenAdd_UsesBinaryOperatorValues()
+    {
+        // D = max(A, B) + C
+        float[] d = await RunTrinary(SampleA, SampleB, SampleC, TensorDataType.Float32,
+            CuTensorOperator.Identity, CuTensorOperator.Identity, CuTensorOperator.Identity,
+            CuTensorOperator.Max, CuTensorOperator.Add, 1.0, 1.0, 1.0);
+
+        for (int i = 0; i < d.Length; i++)
+        {
+            await Assert.That(Math.Abs(d[i] - (Math.Max(SampleA[i], SampleB[i]) + SampleC[i]))).IsLessThan(1e-5f);
+        }
+    }
+
+    [Test]
+    public async Task ElementwiseTrinary_UnaryOperators_Sin_Abs_Sigmoid()
+    {
+        // D = sin(A) + |B_shifted| + sigmoid(C)
+        float[] bShift = [.. SampleB.Select(v => v - 0.5f)];
+        float[] d = await RunTrinary(SampleA, bShift, SampleC, TensorDataType.Float32,
+            CuTensorOperator.Sin, CuTensorOperator.Abs, CuTensorOperator.Sigmoid,
+            CuTensorOperator.Add, CuTensorOperator.Add, 1.0, 1.0, 1.0);
+
+        for (int i = 0; i < d.Length; i++)
+        {
+            double expected = Math.Sin(SampleA[i]) + Math.Abs(bShift[i]) + 1.0 / (1.0 + Math.Exp(-SampleC[i]));
+            await Assert.That(Math.Abs(d[i] - expected)).IsLessThan(1e-4);
+        }
+    }
+
+    [Test]
+    public async Task ElementwiseTrinary_Double_KeepsFullScalarPrecision()
+    {
+        double[] a = [.. SampleA.Select(v => (double)v)];
+        double[] b = [.. SampleB.Select(v => (double)v)];
+        double[] c = [.. SampleC.Select(v => (double)v)];
+
+        double[] d = await RunTrinary(a, b, c, TensorDataType.Float64,
+            CuTensorOperator.Identity, CuTensorOperator.Identity, CuTensorOperator.Identity,
+            CuTensorOperator.Add, CuTensorOperator.Add, 0.1, 0.2, 0.3);
+
+        for (int i = 0; i < d.Length; i++)
+        {
+            await Assert.That(Math.Abs(d[i] - (0.1 * a[i] + 0.2 * b[i] + 0.3 * c[i]))).IsLessThan(1e-13);
+        }
+    }
+
+    [Test]
+    public async Task TensorContraction_Double_UsesDoubleScalars()
+    {
+        // C = 0.1 * A * I with 4x4 doubles; a float alpha would be off by ~1e-9.
+        const int N = 4;
+        double[] hA = [.. Enumerable.Range(1, N * N).Select(i => (double)i)];
+        double[] hI = new double[N * N];
+        for (int i = 0; i < N; i++)
+        {
+            hI[i + N * i] = 1.0;
+        }
+
+        using var dA = new DeviceBuffer<double>(N * N);
+        using var dB = new DeviceBuffer<double>(N * N);
+        using var dC = new DeviceBuffer<double>(N * N);
+        using var dD = new DeviceBuffer<double>(N * N);
+        dA.CopyFrom(hA.AsSpan());
+        dB.CopyFrom(hI.AsSpan());
+        dC.Clear();
+
+        using var contraction = new TensorContraction(
+            [N, N], [0, 2], [N, N], [2, 1], [N, N], [0, 1], [N, N], [0, 1],
+            TensorDataType.Float64, new TensorContractionOptions { Blocking = true });
+        await contraction.PlanAsync();
+        await contraction.ExecuteAsync(dA.PointerAsInt, dB.PointerAsInt, dC.PointerAsInt, dD.PointerAsInt, alpha: 0.1, beta: 0.0);
+
+        double[] r = dD.ToArray();
+        for (int i = 0; i < r.Length; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - 0.1 * hA[i])).IsLessThan(1e-13);
         }
     }
 }
