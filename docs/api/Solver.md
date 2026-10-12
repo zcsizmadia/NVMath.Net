@@ -25,3 +25,7 @@ The `<T>` methods accept `float` or `double`. All overloads check cuSOLVER's `de
 | `Task<int[]> LuFactorBatchedAsync<T>(DeviceBuffer<T> a, DeviceBuffer<int> ipiv, int n, int batchCount, ...)` | Batched LU (cuBLAS `getrfBatched`) of packed n×n matrices; returns a per-matrix status (positive = singular). `ipiv` holds `batchCount·n` entries. |
 | `Task LuSolveBatchedAsync<T>(DeviceBuffer<T> a, DeviceBuffer<int> ipiv, DeviceBuffer<T> b, int n, int nrhs, int batchCount, bool transpose = false, ...)` | Batched solve from the factors; `b` holds `batchCount·n·nrhs` values. |
 | `Task<int[]> SvdBatchedAsync<T>(DeviceBuffer<T> a, s, u, v, int m, int n, int batchCount, bool computeVectors = true, ...)` | Batched Jacobi SVD (cuSOLVER `gesvdjBatched`) of packed m×n matrices, `m, n ≤ 32`. Returns **V** (not Vᵀ), `s` sorted descending, `a` is destroyed. `u`/`v` may be `null` when `computeVectors` is `false`. Returns a per-matrix convergence status. |
+
+### Complex (double precision) variants
+
+`System.Numerics.Complex` (= `cuDoubleComplex`) overloads are available for `LuFactorAsync`, `LuSolveAsync` (with `transpose` and `conjugate`), `QrAsync`, `QrFormQAsync`, `LeastSquaresAsync` and `CholeskyAsync` (Hermitian positive definite), plus `HermitianEigAsync(DeviceBuffer<Complex> a, DeviceBuffer<double> w, int n, bool computeVectors = true, bool upper = false, ...)` for Hermitian eigenproblems (real eigenvalues, ascending). .NET has no single-precision complex type, so complex64 is not offered; complex SVD and complex batched routines are not yet implemented.
