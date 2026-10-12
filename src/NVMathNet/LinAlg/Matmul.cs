@@ -4,6 +4,7 @@
 using System.Numerics;
 
 using NVMathNet.Interop;
+using NVMathNet.Memory;
 
 namespace NVMathNet.LinAlg;
 
@@ -40,6 +41,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     // ── Workspace ─────────────────────────────────────────────────────────────
 
     private nint   _workspacePtr;
+    private Workspace _workspace;
 
     // ── cuBLASLt attribute IDs (see cublasLt.h) ───────────────────────────────
 
@@ -347,7 +349,8 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
         if (maxWorkspace > 0)
         {
-            _workspacePtr = (nint)CudaRuntime.Malloc(maxWorkspace);
+            _workspace = new Workspace(maxWorkspace);
+            _workspacePtr = _workspace.PointerAsInt;
         }
 
         SelectAlgorithm(0);
@@ -624,7 +627,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
         if (_workspacePtr != 0)
         {
-            unsafe { CudaRuntime.Free((void*)_workspacePtr); }
+            _workspace.Dispose();
             _workspacePtr = 0;
         }
 

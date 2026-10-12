@@ -4,6 +4,7 @@
 using System.Numerics;
 
 using NVMathNet.Interop;
+using NVMathNet.Memory;
 
 namespace NVMathNet.Sparse;
 
@@ -73,7 +74,8 @@ public static partial class SparseLinearAlgebra
                 &beta, dnVecY,
                 cudaType, CuSparseSpMVAlg.Default);
 
-            void* buffer = bufferSize > 0 ? CudaRuntime.Malloc(bufferSize) : null;
+            var ws = new Workspace(bufferSize);
+            void* buffer = ws.Pointer;
             try
             {
                 CuSparseNative.SpMV(
@@ -86,10 +88,7 @@ public static partial class SparseLinearAlgebra
             }
             finally
             {
-                if (buffer != null)
-                {
-                    CudaRuntime.Free(buffer);
-                }
+                ws.Dispose();
             }
         }
         finally
@@ -169,7 +168,8 @@ public static partial class SparseLinearAlgebra
                 &beta, dnMatC,
                 cudaType, CuSparseSpMMAlg.Default);
 
-            void* buffer = bufferSize > 0 ? CudaRuntime.Malloc(bufferSize) : null;
+            var ws = new Workspace(bufferSize);
+            void* buffer = ws.Pointer;
             try
             {
                 CuSparseNative.SpMMPreprocess(
@@ -192,10 +192,7 @@ public static partial class SparseLinearAlgebra
             }
             finally
             {
-                if (buffer != null)
-                {
-                    CudaRuntime.Free(buffer);
-                }
+                ws.Dispose();
             }
         }
         finally

@@ -3,6 +3,7 @@
 
 using System.Numerics;
 using NVMathNet.Interop;
+using NVMathNet.Memory;
 
 namespace NVMathNet.Fft;
 
@@ -40,6 +41,7 @@ public sealed class Fft : IAsyncDisposable, IDisposable
     private nint   _outputPtr;
     private nuint  _workspaceSize;
     private nint   _workspacePtr;
+    private Workspace _workspace;
     private nint   _blas;              // lazily created, only for output normalization
     private long   _signalSize;        // N: product of the transform-axis lengths
     private long   _outputElements;    // output elements across the whole batch
@@ -191,7 +193,8 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         // Allocate workspace
         if (_workspaceSize > 0)
         {
-            unsafe { _workspacePtr = (nint)CudaRuntime.Malloc(_workspaceSize); }
+            _workspace = new Workspace(_workspaceSize);
+            _workspacePtr = _workspace.PointerAsInt;
             unsafe { CuFftNative.SetWorkArea(_plan, (void*)_workspacePtr); }
         }
 
@@ -601,7 +604,7 @@ public sealed class Fft : IAsyncDisposable, IDisposable
 
         if (_workspacePtr != 0)
         {
-            unsafe { CudaRuntime.Free((void*)_workspacePtr); }
+            _workspace.Dispose();
             _workspacePtr = 0;
         }
 

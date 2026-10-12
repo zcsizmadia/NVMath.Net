@@ -4,6 +4,7 @@
 using System.Numerics;
 
 using NVMathNet.Interop;
+using NVMathNet.Memory;
 
 namespace NVMathNet.Sparse;
 
@@ -96,13 +97,15 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
         var vals = new DeviceBuffer<T>(NNZ);
         nint handle = CuSparseNative.Create();
         void* buffer = null;
+        Workspace ws = default;
         try
         {
             nuint size = CuSparseNative.Csr2CscEx2BufferSize(
                 handle, (int)Rows, (int)Cols, (int)NNZ,
                 Values.Pointer, (int*)RowOffsets.Pointer, (int*)ColIndices.Pointer,
                 vals.Pointer, (int*)colPtr.Pointer, (int*)rowInd.Pointer, cudaType);
-            buffer = size > 0 ? CudaRuntime.Malloc(size) : null;
+            ws = new Workspace(size);
+            buffer = ws.Pointer;
             CuSparseNative.Csr2CscEx2(
                 handle, (int)Rows, (int)Cols, (int)NNZ,
                 Values.Pointer, (int*)RowOffsets.Pointer, (int*)ColIndices.Pointer,
@@ -121,10 +124,7 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
         }
         finally
         {
-            if (buffer != null)
-            {
-                CudaRuntime.Free(buffer);
-            }
+            ws.Dispose();
 
             CuSparseNative.Destroy(handle);
         }
