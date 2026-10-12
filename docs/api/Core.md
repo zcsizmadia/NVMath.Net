@@ -117,3 +117,21 @@ Manages a set of CUDA devices for single-process multi-GPU execution. Implements
 | `Task SynchronizeAllAsync(CancellationToken ct = default)` | Async synchronise all. |
 | `void CopyPeerAsync<T>(DeviceBuffer<T> dst, int dstIdx, DeviceBuffer<T> src, int srcIdx, CudaStream? stream = null)` | Peer-to-peer device copy. |
 | `bool CanAccessPeer(int fromIndex, int toIndex)` | Whether peer access is possible. |
+
+## Memory managers (`NVMathNet.Memory`)
+
+`DeviceBuffer<T>` allocates through an `IDeviceMemoryManager`, so pooling or externally managed allocators can be plugged in.
+
+| Type / member | Description |
+|---|---|
+| `IDeviceMemoryManager` | `nint Allocate(nuint sizeInBytes)` and `void Free(nint pointer)`. Implementations must be thread-safe. |
+| `DeviceMemory.Default` | Process-wide manager used by `new DeviceBuffer<T>(length)`. Defaults to `CudaMallocMemoryManager.Instance`. A buffer frees through the manager that allocated it, so changing the default never affects existing buffers. |
+| `new DeviceBuffer<T>(long length, IDeviceMemoryManager manager)` | Allocates from a specific manager. |
+| `CudaMallocMemoryManager` | Plain `cudaMalloc` / `cudaFree` (the default). |
+| `CachingMemoryManager` | Keeps freed blocks for reuse (power-of-two buckets up to 1 GiB). `Trim()` returns cached blocks to the inner manager; `CachedBytes` / `InUseBytes` report usage. |
+
+```csharp
+using var cache = new CachingMemoryManager();
+DeviceMemory.Default = cache;           // all new buffers now reuse blocks
+using var a = new DeviceBuffer<float>(1 << 20);
+```

@@ -5,6 +5,7 @@ using System.Numerics;
 using System.Runtime.CompilerServices;
 
 using NVMathNet.Interop;
+using NVMathNet.Memory;
 
 namespace NVMathNet;
 
@@ -18,6 +19,7 @@ public sealed class DeviceBuffer<T> : IDisposable, IAsyncDisposable where T : un
 {
     private nint _ptr;
     private bool _disposed;
+    private IDeviceMemoryManager? _manager;
 
     /// <summary>Number of elements.</summary>
     public long Length { get; }
@@ -40,13 +42,31 @@ public sealed class DeviceBuffer<T> : IDisposable, IAsyncDisposable where T : un
 
     /// <summary>
     /// Allocates a device buffer of <paramref name="length"/> elements
-    /// using <c>cudaMalloc</c>.
+    /// using the process-wide <see cref="DeviceMemory.Default"/> manager
+    /// (<c>cudaMalloc</c> unless replaced).
     /// </summary>
-    public unsafe DeviceBuffer(long length, bool allocate = true)
+    public DeviceBuffer(long length, bool allocate = true)
     {
         ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
         Length = length;
-        _ptr = allocate ? (nint)CudaRuntime.Malloc((nuint)(length * Unsafe.SizeOf<T>())) : 0;
+        if (allocate)
+        {
+            _manager = DeviceMemory.Default;
+            _ptr = _manager.Allocate((nuint)(length * Unsafe.SizeOf<T>()));
+        }
+    }
+
+    /// <summary>
+    /// Allocates a device buffer of <paramref name="length"/> elements from
+    /// <paramref name="manager"/>. The memory is returned to the same manager on dispose.
+    /// </summary>
+    public DeviceBuffer(long length, IDeviceMemoryManager manager)
+    {
+        ArgumentOutOfRangeException.ThrowIfNegativeOrZero(length);
+        ArgumentNullException.ThrowIfNull(manager);
+        Length = length;
+        _manager = manager;
+        _ptr = manager.Allocate((nuint)(length * Unsafe.SizeOf<T>()));
     }
 
     /// <summary>
@@ -190,7 +210,15 @@ public sealed class DeviceBuffer<T> : IDisposable, IAsyncDisposable where T : un
         _disposed = true;
         if (_ptr != 0)
         {
-            CudaRuntime.Free((void*)_ptr);
+            if (_manager is not null)
+            {
+                _manager.Free(_ptr);
+            }
+            else
+            {
+                CudaRuntime.Free((void*)_ptr);
+            }
+
             _ptr = 0;
         }
     }
