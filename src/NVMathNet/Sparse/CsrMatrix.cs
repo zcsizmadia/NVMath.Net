@@ -45,6 +45,20 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
     }
 
     /// <summary>
+    /// Creates an additional descriptor over the same arrays. Operations that attach attributes to the descriptor
+    /// (triangular solves) use it so the matrix's own descriptor stays unmodified; the caller destroys it.
+    /// </summary>
+    internal nint CreateTemporaryDescriptor()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        return CuSparseNative.CreateCsr(
+            Rows, Cols, _nnz,
+            RowOffsets.Pointer, ColIndices.Pointer, Values.Pointer,
+            CuSparseIndexType.Int32, CuSparseIndexType.Int32, CuSparseIndexBase.Zero,
+            CudaRuntime.GetCudaDataType<T>());
+    }
+
+    /// <summary>
     /// Creates a CSR sparse matrix from pre-allocated device buffers.
     /// </summary>
     /// <param name="rows">Number of rows.</param>

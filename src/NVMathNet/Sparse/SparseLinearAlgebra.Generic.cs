@@ -63,7 +63,7 @@ public static partial class SparseLinearAlgebra
             throw new ArgumentException("SpSV requires a square matrix.", nameof(matrix));
         }
 
-        await RunAsync(stream, ct, s => SpSVCore(matrix.Descriptor, x, y, triangle, diagonal, alpha ?? T.One, transpose, s)).ConfigureAwait(false);
+        await RunAsync(stream, ct, s => WithTemporaryDescriptor(matrix.CreateTemporaryDescriptor(), d => SpSVCore(d, x, y, triangle, diagonal, alpha ?? T.One, transpose, s))).ConfigureAwait(false);
     }
 
     private static unsafe void SpSVCore<T>(
@@ -153,7 +153,7 @@ public static partial class SparseLinearAlgebra
             throw new ArgumentException("SpSM requires a square matrix.", nameof(matrix));
         }
 
-        await RunAsync(stream, ct, s => SpSMCore(matrix.Descriptor, matrix.Rows, b, c, n, triangle, diagonal, alpha ?? T.One, transpose, s)).ConfigureAwait(false);
+        await RunAsync(stream, ct, s => WithTemporaryDescriptor(matrix.CreateTemporaryDescriptor(), d => SpSMCore(d, matrix.Rows, b, c, n, triangle, diagonal, alpha ?? T.One, transpose, s))).ConfigureAwait(false);
     }
 
     private static unsafe void SpSMCore<T>(
@@ -459,7 +459,7 @@ public static partial class SparseLinearAlgebra
             throw new ArgumentException("SpSV requires a square matrix.", nameof(matrix));
         }
 
-        return RunAsync(stream, ct, s => SpSVCore(matrix.Descriptor, x, y, triangle, diagonal, alpha ?? T.One, transpose, s));
+        return RunAsync(stream, ct, s => WithTemporaryDescriptor(matrix.CreateTemporaryDescriptor(), d => SpSVCore(d, x, y, triangle, diagonal, alpha ?? T.One, transpose, s)));
     }
 
     /// <summary>Triangular solve <c>op(A) · C = alpha · B</c> for a COO matrix.</summary>
@@ -478,7 +478,7 @@ public static partial class SparseLinearAlgebra
             throw new ArgumentException("SpSM requires a square matrix.", nameof(matrix));
         }
 
-        return RunAsync(stream, ct, s => SpSMCore(matrix.Descriptor, matrix.Rows, b, c, n, triangle, diagonal, alpha ?? T.One, transpose, s));
+        return RunAsync(stream, ct, s => WithTemporaryDescriptor(matrix.CreateTemporaryDescriptor(), d => SpSMCore(d, matrix.Rows, b, c, n, triangle, diagonal, alpha ?? T.One, transpose, s)));
     }
 
     /// <summary>Sparse matrix-vector product <c>y = alpha · op(A) · x + beta · y</c> for a CSC matrix.</summary>
@@ -630,6 +630,21 @@ public static partial class SparseLinearAlgebra
     }
 
     // -- Helpers ------------------------------------------------------------
+
+    // Triangular solves attach fill-mode / diagonal attributes to the descriptor, and a descriptor that carries them
+    // is rejected by other operations (SpMV, SpGEMM: CUSPARSE_STATUS_NOT_SUPPORTED). They therefore run on a
+    // temporary descriptor over the same arrays, leaving the matrix's own descriptor untouched.
+    private static void WithTemporaryDescriptor(nint descriptor, Action<nint> body)
+    {
+        try
+        {
+            body(descriptor);
+        }
+        finally
+        {
+            CuSparseNative.DestroySpMat(descriptor);
+        }
+    }
 
     private const int ColMajor = 1; // CUSPARSE_ORDER_COL
 
