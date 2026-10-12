@@ -23,7 +23,7 @@ NVMath.Net as it is today; where nvmath-python has something this library does n
 |---|---|---|
 | `nvmath.fft.fft`, `ifft`, `rfft`, `irfft` | `Fft.FftAsync`, `IFftAsync`, `RFftAsync`, `IRFftAsync` | One-shot helpers |
 | `nvmath.fft.FFT` | `Fft` class | N-D and batched plans; `FftOptions.Normalization` replaces norm scaling. Prolog/epilog callbacks are not available yet |
-| `nvmath.linalg.advanced.matmul` / `Matmul` | `Matmul` | Epilogs (`MatmulEpilog`), bias, aux outputs, batching, FP8 scale pointers, `Autotune` |
+| `nvmath.linalg.advanced.matmul` / `Matmul` | `Matmul` | Epilogs (`MatmulEpilog`), bias, aux outputs, batching, FP8 scale pointers, `Autotune`, plan cache, conjugate transpose and complex types. Block-scaled MXFP8/NVFP4 is not available yet |
 | `nvmath.linalg` BLAS-style helpers | `Gemm`, `TriangularSolve`, `SymmetricMultiply`, `DiagonalMultiply` | Typed per precision (`Sgemm`, `Dgemm`, …) |
 | `nvmath.sparse.advanced.DirectSolver` | `SparseDirectSolver<T>` | cuDSS; analyse / factorise / refactorise / solve |
 | `nvmath.sparse` multiplication | `SparseLinearAlgebra` (`SpMVAsync`, `SpMMAsync`, `SpGemmAsync`, …) | CSR, COO, BSR, CSC |

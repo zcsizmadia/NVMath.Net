@@ -18,13 +18,13 @@ ownership and no native build step (the NVIDIA libraries are loaded at run time)
 | Area | Wraps | Highlights |
 |---|---|---|
 | **FFT** | cuFFT | C2C / R2C / C2R, N-D and batched plans, leading- or trailing-axis layouts, output normalization (`None`, `Backward`, `Forward`, `Orthonormal`) |
-| **Matrix multiplication** | cuBLASLt, cuBLAS | `Matmul` with epilogs (bias, ReLU, GELU, aux outputs), batching, FP8 scale pointers, algorithm autotuning; GEMM, TRSM, SYMM, DGMM |
-| **Sparse** | cuSPARSE | CSR, COO, BSR and CSC matrices; SpMV, SpMM, SpSV, SpSM, SDDMM, SpGEMM, CSR↔CSC |
-| **Sparse direct solver** | cuDSS | `SparseDirectSolver<T>`: analyse / factorise / refactorise / solve; LU, LDLᵀ, Cholesky |
+| **Matrix multiplication** | cuBLASLt, cuBLAS | `Matmul` with epilogs (bias, ReLU, GELU, aux outputs), batching, FP8 scale pointers, algorithm autotuning with a plan cache, conjugate transpose and complex matmul; GEMM, TRSM, SYMM, DGMM |
+| **Sparse** | cuSPARSE | CSR, COO, BSR and CSC matrices (real and complex); SpMV, SpMM, SpSV, SpSM, SDDMM, SpGEMM, CSR↔CSC |
+| **Sparse direct solver** | cuDSS | `SparseDirectSolver<T>`: analyse / factorise / refactorise / solve; LU, LDLᵀ, Cholesky; real and complex (Hermitian) |
 | **Tensors** | cuTENSOR 2 | Contractions, element-wise unary / binary / trinary operations, permutation, reduction |
-| **Dense solvers** | cuSOLVER, cuBLAS | LU, QR, least squares, Cholesky, SVD, eigenvalues; batched Cholesky / LU / Jacobi SVD; complex (double) variants |
+| **Dense solvers** | cuSOLVER, cuBLAS | LU, QR, least squares, Cholesky, SVD, eigenvalues; batched Cholesky / LU / Jacobi SVD; complex (double) variants including SVD |
 | **Random numbers** | cuRAND | Pseudo- and quasi-random generators, uniform / normal / log-normal / Poisson, integers, skip-ahead |
-| **Infrastructure** | CUDA runtime | `DeviceBuffer<T>`, streams, events, multi-GPU helper, pluggable device memory managers |
+| **Infrastructure** | CUDA runtime | `DeviceBuffer<T>`, streams, events, multi-GPU helper, pluggable device memory managers, dependency-free logging hook |
 
 ---
 
