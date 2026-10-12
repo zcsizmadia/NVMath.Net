@@ -41,7 +41,7 @@ public static partial class SparseLinearAlgebra
         CudaStream s = stream ?? new CudaStream();
         try
         {
-            SpMVCore(matrix, x, y, alpha, beta, transpose, s);
+            SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s);
             await s.SynchronizeAsync(ct).ConfigureAwait(false);
         }
         finally
@@ -53,8 +53,8 @@ public static partial class SparseLinearAlgebra
         }
     }
 
-    private static unsafe void SpMVCore<T>(
-        CsrMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+    internal static unsafe void SpMVCore<T>(
+        nint matrixDesc, DeviceBuffer<T> x, DeviceBuffer<T> y,
         float alphaF, float betaF, bool transpose, CudaStream s) where T : unmanaged, INumberBase<T>
     {
         // cuSPARSE reads alpha/beta as the compute type, so pass them as T.
@@ -69,7 +69,7 @@ public static partial class SparseLinearAlgebra
             nuint bufferSize = CuSparseNative.SpMVBufferSize(
                 handle,
                 opA,
-                &alpha, matrix.Descriptor, dnVecX,
+                &alpha, matrixDesc, dnVecX,
                 &beta, dnVecY,
                 cudaType, CuSparseSpMVAlg.Default);
 
@@ -79,7 +79,7 @@ public static partial class SparseLinearAlgebra
                 CuSparseNative.SpMV(
                     handle,
                     opA,
-                    &alpha, matrix.Descriptor, dnVecX,
+                    &alpha, matrixDesc, dnVecX,
                     &beta, dnVecY,
                     cudaType, CuSparseSpMVAlg.Default,
                     buffer);
@@ -133,7 +133,7 @@ public static partial class SparseLinearAlgebra
         CudaStream s = stream ?? new CudaStream();
         try
         {
-            SpMMCore(matrix, b, c, n, alpha, beta, transpose, s);
+            SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s);
             await s.SynchronizeAsync(ct).ConfigureAwait(false);
         }
         finally
@@ -145,8 +145,8 @@ public static partial class SparseLinearAlgebra
         }
     }
 
-    private static unsafe void SpMMCore<T>(
-        CsrMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c,
+    internal static unsafe void SpMMCore<T>(
+        nint matrixDesc, long matrixRows, long matrixCols, DeviceBuffer<T> b, DeviceBuffer<T> c,
         long n, float alphaF, float betaF, bool transpose, CudaStream s) where T : unmanaged, INumberBase<T>
     {
         T alpha = T.CreateChecked(alphaF), beta = T.CreateChecked(betaF);
@@ -156,8 +156,8 @@ public static partial class SparseLinearAlgebra
         // order 1 = CUSPARSE_ORDER_COL (column-major)
         // B dimensions: (k × n) where k depends on op(A)
         // For transpose: op(A) is n_cols × n_rows, so B is n_rows × n and C is n_cols × n
-        long cRows = transpose ? matrix.Cols : matrix.Rows;
-        var dnMatB = CuSparseNative.CreateDnMat(transpose ? matrix.Rows : matrix.Cols, n, transpose ? matrix.Rows : matrix.Cols, b.Pointer, cudaType, 1);
+        long cRows = transpose ? matrixCols : matrixRows;
+        var dnMatB = CuSparseNative.CreateDnMat(transpose ? matrixRows : matrixCols, n, transpose ? matrixRows : matrixCols, b.Pointer, cudaType, 1);
         var dnMatC = CuSparseNative.CreateDnMat(cRows, n, cRows, c.Pointer, cudaType, 1);
         try
         {
@@ -165,7 +165,7 @@ public static partial class SparseLinearAlgebra
                 handle,
                 opA,
                 CuSparseOperation.None,
-                &alpha, matrix.Descriptor, dnMatB,
+                &alpha, matrixDesc, dnMatB,
                 &beta, dnMatC,
                 cudaType, CuSparseSpMMAlg.Default);
 
@@ -176,7 +176,7 @@ public static partial class SparseLinearAlgebra
                     handle,
                     opA,
                     CuSparseOperation.None,
-                    &alpha, matrix.Descriptor, dnMatB,
+                    &alpha, matrixDesc, dnMatB,
                     &beta, dnMatC,
                     cudaType, CuSparseSpMMAlg.Default,
                     buffer);
@@ -185,7 +185,7 @@ public static partial class SparseLinearAlgebra
                     handle,
                     opA,
                     CuSparseOperation.None,
-                    &alpha, matrix.Descriptor, dnMatB,
+                    &alpha, matrixDesc, dnMatB,
                     &beta, dnMatC,
                     cudaType, CuSparseSpMMAlg.Default,
                     buffer);

@@ -387,6 +387,60 @@ public static partial class SparseLinearAlgebra
         }
     }
 
+    // -- SpMV / SpMM for COO and BSR ----------------------------------------
+
+    /// <summary>Sparse matrix-vector product <c>y = alpha · op(A) · x + beta · y</c> for a COO matrix.</summary>
+    /// <inheritdoc cref="SpMVAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, float, float, bool, CudaStream, CancellationToken)"/>
+    public static Task SpMVAsync<T>(
+        CooMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        float alpha = 1.0f, float beta = 0.0f, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(y);
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+    }
+
+    /// <summary>Sparse matrix-vector product <c>y = alpha · op(A) · x + beta · y</c> for a BSR matrix.</summary>
+    /// <inheritdoc cref="SpMVAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, float, float, bool, CudaStream, CancellationToken)"/>
+    public static Task SpMVAsync<T>(
+        BsrMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        float alpha = 1.0f, float beta = 0.0f, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(y);
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+    }
+
+    /// <summary>Sparse-dense matrix product <c>C = alpha · op(A) · B + beta · C</c> for a COO matrix.</summary>
+    /// <inheritdoc cref="SpMMAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, long, float, float, bool, CudaStream, CancellationToken)"/>
+    public static Task SpMMAsync<T>(
+        CooMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        float alpha = 1.0f, float beta = 0.0f, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(b);
+        ArgumentNullException.ThrowIfNull(c);
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s));
+    }
+
+    /// <summary>Sparse-dense matrix product <c>C = alpha · op(A) · B + beta · C</c> for a BSR matrix.</summary>
+    /// <inheritdoc cref="SpMMAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, long, float, float, bool, CudaStream, CancellationToken)"/>
+    public static Task SpMMAsync<T>(
+        BsrMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        float alpha = 1.0f, float beta = 0.0f, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(b);
+        ArgumentNullException.ThrowIfNull(c);
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s));
+    }
+
     // -- Helpers ------------------------------------------------------------
 
     private const int ColMajor = 1; // CUSPARSE_ORDER_COL
