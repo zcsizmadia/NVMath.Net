@@ -291,6 +291,8 @@ public static partial class DenseSolver
 
             CuSolverNative.Sgetrf(handle, n, n, (float*)a.Pointer, n,
                 (float*)workspace.Pointer, (int*)devIpiv.Pointer, (int*)devInfo.Pointer);
+            s.Synchronize();
+            ThrowIfInfo(devInfo, "getrf (matrix is singular)");
             CuSolverNative.Sgetrs(handle, 0 /* CUBLAS_OP_N */, n, nrhs,
                 (float*)a.Pointer, n, (int*)devIpiv.Pointer, (float*)b.Pointer, n, (int*)devInfo.Pointer);
         }
@@ -310,6 +312,8 @@ public static partial class DenseSolver
 
             CuSolverNative.Dgetrf(handle, n, n, (double*)a.Pointer, n,
                 (double*)workspace.Pointer, (int*)devIpiv.Pointer, (int*)devInfo.Pointer);
+            s.Synchronize();
+            ThrowIfInfo(devInfo, "getrf (matrix is singular)");
             CuSolverNative.Dgetrs(handle, 0, n, nrhs,
                 (double*)a.Pointer, n, (int*)devIpiv.Pointer, (double*)b.Pointer, n, (int*)devInfo.Pointer);
         }
@@ -329,6 +333,8 @@ public static partial class DenseSolver
 
             CuSolverNative.Spotrf(handle, uplo, n, (float*)a.Pointer, n,
                 (float*)workspace.Pointer, lwork, (int*)devInfo.Pointer);
+            s.Synchronize();
+            ThrowIfInfo(devInfo, "potrf (matrix is not positive definite)");
         }
         finally { CuSolverNative.Destroy(handle); }
     }
@@ -346,6 +352,8 @@ public static partial class DenseSolver
 
             CuSolverNative.Dpotrf(handle, uplo, n, (double*)a.Pointer, n,
                 (double*)workspace.Pointer, lwork, (int*)devInfo.Pointer);
+            s.Synchronize();
+            ThrowIfInfo(devInfo, "potrf (matrix is not positive definite)");
         }
         finally { CuSolverNative.Destroy(handle); }
     }
@@ -371,6 +379,8 @@ public static partial class DenseSolver
                 (float*)vt.Pointer, n,
                 (float*)workspace.Pointer, lwork,
                 null, (int*)devInfo.Pointer);
+            s.Synchronize();
+            ThrowIfInfo(devInfo, "gesvd (did not converge)");
         }
         finally { CuSolverNative.Destroy(handle); }
     }
@@ -396,6 +406,8 @@ public static partial class DenseSolver
                 (double*)vt.Pointer, n,
                 (double*)workspace.Pointer, lwork,
                 null, (int*)devInfo.Pointer);
+            s.Synchronize();
+            ThrowIfInfo(devInfo, "gesvd (did not converge)");
         }
         finally { CuSolverNative.Destroy(handle); }
     }
@@ -416,6 +428,8 @@ public static partial class DenseSolver
             CuSolverNative.Ssyevd(handle, jobz, uplo, n,
                 (float*)a.Pointer, n, (float*)w.Pointer,
                 (float*)workspace.Pointer, lwork, (int*)devInfo.Pointer);
+            s.Synchronize();
+            ThrowIfInfo(devInfo, "syevd (did not converge)");
         }
         finally { CuSolverNative.Destroy(handle); }
     }
@@ -436,6 +450,8 @@ public static partial class DenseSolver
             CuSolverNative.Dsyevd(handle, jobz, uplo, n,
                 (double*)a.Pointer, n, (double*)w.Pointer,
                 (double*)workspace.Pointer, lwork, (int*)devInfo.Pointer);
+            s.Synchronize();
+            ThrowIfInfo(devInfo, "syevd (did not converge)");
         }
         finally { CuSolverNative.Destroy(handle); }
     }
