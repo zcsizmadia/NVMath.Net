@@ -174,6 +174,25 @@ public static partial class DenseSolver
     }
 
     /// <summary>
+    /// Solves <c>op(A_i)·X_i = B_i</c> for every matrix of a complex batch, where <c>op</c> is the identity or, with
+    /// <paramref name="transpose"/>, the plain transpose. Use the overload with a <c>conjugate</c> argument for the
+    /// conjugate transpose.
+    /// </summary>
+    /// <param name="a">Device buffer holding the batch of L\U factors.</param>
+    /// <param name="ipiv">Pivot indices from the factorisation.</param>
+    /// <param name="b">Device buffer of <c>batchCount·n·nrhs</c> right-hand sides; overwritten with the solutions.</param>
+    /// <param name="n">Order of each matrix.</param>
+    /// <param name="nrhs">Right-hand sides per matrix.</param>
+    /// <param name="batchCount">Number of matrices.</param>
+    /// <param name="transpose">Solve with the transpose of each A.</param>
+    /// <param name="stream">Optional CUDA stream.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public static Task LuSolveBatchedAsync(
+        DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, DeviceBuffer<Complex> b, int n, int nrhs, int batchCount,
+        bool transpose = false, CudaStream? stream = null, CancellationToken ct = default)
+        => LuSolveBatchedAsync(a, ipiv, b, n, nrhs, batchCount, transpose, false, stream, ct);
+
+    /// <summary>
     /// Solves <c>op(A_i)·X_i = B_i</c> for every matrix of a complex batch from the factors produced by
     /// <see cref="LuFactorBatchedAsync(DeviceBuffer{Complex}, DeviceBuffer{int}, int, int, CudaStream, CancellationToken)"/>.
     /// </summary>
@@ -189,7 +208,7 @@ public static partial class DenseSolver
     /// <param name="ct">Cancellation token.</param>
     public static async Task LuSolveBatchedAsync(
         DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, DeviceBuffer<Complex> b, int n, int nrhs, int batchCount,
-        bool transpose = false, bool conjugate = false,
+        bool transpose, bool conjugate,
         CudaStream? stream = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(a);

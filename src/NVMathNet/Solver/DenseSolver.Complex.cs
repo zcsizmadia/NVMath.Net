@@ -46,6 +46,24 @@ public static partial class DenseSolver
     }
 
     /// <summary>
+    /// Solves <c>op(A)·X = B</c> from a complex LU factorisation, where <c>op</c> is the identity or, with
+    /// <paramref name="transpose"/>, the plain transpose. Use the overload with a <c>conjugate</c> argument for the
+    /// conjugate transpose.
+    /// </summary>
+    /// <param name="a">Device buffer holding the n×n L\U factors.</param>
+    /// <param name="ipiv">Pivot indices from the factorisation.</param>
+    /// <param name="b">Device buffer for the n×nrhs right-hand sides; overwritten with the solution.</param>
+    /// <param name="n">Order of A.</param>
+    /// <param name="nrhs">Number of right-hand sides.</param>
+    /// <param name="transpose">Solve with the transpose of A.</param>
+    /// <param name="stream">Optional CUDA stream.</param>
+    /// <param name="ct">Cancellation token.</param>
+    public static Task LuSolveAsync(
+        DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, DeviceBuffer<Complex> b, int n, int nrhs = 1,
+        bool transpose = false, CudaStream? stream = null, CancellationToken ct = default)
+        => LuSolveAsync(a, ipiv, b, n, nrhs, transpose, false, stream, ct);
+
+    /// <summary>
     /// Solves <c>op(A)·X = B</c> from the factors produced by
     /// <see cref="LuFactorAsync(DeviceBuffer{Complex}, DeviceBuffer{int}, int, int, CudaStream, CancellationToken)"/>.
     /// </summary>
@@ -59,8 +77,8 @@ public static partial class DenseSolver
     /// <param name="stream">Optional CUDA stream.</param>
     /// <param name="ct">Cancellation token.</param>
     public static async Task LuSolveAsync(
-        DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, DeviceBuffer<Complex> b, int n, int nrhs = 1,
-        bool transpose = false, bool conjugate = false,
+        DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, DeviceBuffer<Complex> b, int n, int nrhs,
+        bool transpose, bool conjugate,
         CudaStream? stream = null, CancellationToken ct = default)
     {
         ArgumentNullException.ThrowIfNull(a);
