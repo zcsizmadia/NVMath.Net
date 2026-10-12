@@ -5,8 +5,6 @@ using System.Runtime.InteropServices;
 
 namespace NVMathNet.Interop;
 
-// TODO: VALIDATE ENUMS
-
 /// <summary>cuSPARSE status codes.</summary>
 public enum CuSparseStatus : int
 {

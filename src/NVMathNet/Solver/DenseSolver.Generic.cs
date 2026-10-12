@@ -41,6 +41,8 @@ public static partial class DenseSolver
     private static unsafe int LuFactorCore<T>(DeviceBuffer<T> a, DeviceBuffer<int> ipiv, int m, int n, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(ipiv.Length, Math.Min(m, n), nameof(ipiv));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -97,6 +99,8 @@ public static partial class DenseSolver
         DeviceBuffer<T> a, DeviceBuffer<int> ipiv, DeviceBuffer<T> b, int n, int nrhs, bool transpose, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(n, nameof(n)); Dim(nrhs, nameof(nrhs));
+        Need(a.Length, (long)n * n, nameof(a)); Need(ipiv.Length, n, nameof(ipiv)); Need(b.Length, (long)n * nrhs, nameof(b));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -148,6 +152,8 @@ public static partial class DenseSolver
     private static unsafe void QrCore<T>(DeviceBuffer<T> a, DeviceBuffer<T> tau, int m, int n, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(tau.Length, Math.Min(m, n), nameof(tau));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -204,6 +210,8 @@ public static partial class DenseSolver
     private static unsafe void QrFormQCore<T>(DeviceBuffer<T> a, DeviceBuffer<T> tau, int m, int n, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(tau.Length, Math.Min(m, n), nameof(tau));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -266,6 +274,8 @@ public static partial class DenseSolver
         DeviceBuffer<T> a, DeviceBuffer<T> b, int m, int n, int nrhs, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n)); Dim(nrhs, nameof(nrhs));
+        Need(a.Length, (long)m * n, nameof(a)); Need(b.Length, (long)Math.Max(m, n) * nrhs, nameof(b));
         nint solver = CuSolverNative.Create();
         nint blas = CuBlasNative.Create();
         CuSolverNative.SetStream(solver, s.Handle);
@@ -367,6 +377,8 @@ public static partial class DenseSolver
     private static unsafe int[] CholeskyBatchedCore<T>(DeviceBuffer<T> a, int n, int batchCount, bool upper, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(n, nameof(n)); Dim(batchCount, nameof(batchCount));
+        Need(a.Length, (long)n * n * batchCount, nameof(a));
         var uplo = upper ? CuBlasFillMode.Upper : CuBlasFillMode.Lower;
         long stride = (long)n * n * sizeof(T);
         nint[] hostPtrs = new nint[batchCount];

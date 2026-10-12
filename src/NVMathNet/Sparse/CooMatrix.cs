@@ -66,6 +66,12 @@ public sealed unsafe class CooMatrix<T> : IDisposable where T : unmanaged, INumb
         ArgumentNullException.ThrowIfNull(rowIndices);
         ArgumentNullException.ThrowIfNull(colIndices);
         ArgumentNullException.ThrowIfNull(values);
+        ArgumentOutOfRangeException.ThrowIfNegative(rows);
+        ArgumentOutOfRangeException.ThrowIfNegative(cols);
+        if (rowIndices.Length < values.Length || colIndices.Length < values.Length)
+        {
+            throw new ArgumentException($"rowIndices and colIndices must each hold at least {values.Length} elements (one per value).", nameof(rowIndices));
+        }
 
         Rows = rows;
         Cols = cols;

@@ -80,13 +80,27 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
         ArgumentNullException.ThrowIfNull(rowOffsets);
         ArgumentNullException.ThrowIfNull(colIndices);
         ArgumentNullException.ThrowIfNull(values);
+        ArgumentOutOfRangeException.ThrowIfNegative(rows);
+        ArgumentOutOfRangeException.ThrowIfNegative(cols);
+
+        long count = nnz ?? values.Length;
+        ArgumentOutOfRangeException.ThrowIfNegative(count, nameof(nnz));
+        if (rowOffsets.Length < rows + 1)
+        {
+            throw new ArgumentException($"rowOffsets holds {rowOffsets.Length} elements but rows + 1 = {rows + 1} are required.", nameof(rowOffsets));
+        }
+
+        if (colIndices.Length < count || values.Length < count)
+        {
+            throw new ArgumentException($"colIndices and values must each hold at least {count} elements.", nameof(values));
+        }
 
         Rows = rows;
         Cols = cols;
         RowOffsets = rowOffsets;
         ColIndices = colIndices;
         Values = values;
-        _nnz = nnz ?? values.Length;
+        _nnz = count;
 
         var cudaType = CudaRuntime.GetCudaDataType<T>();
         _descriptor = CuSparseNative.CreateCsr(
@@ -107,7 +121,7 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
     public CsrMatrix<T> Transpose()
     {
         var (colPtr, rowInd, vals) = TransposeBuffers();
-        return new CsrMatrix<T>(Cols, Rows, colPtr, rowInd, vals);
+        return new CsrMatrix<T>(Cols, Rows, colPtr, rowInd, vals, NNZ);
     }
 
     /// <summary>
@@ -116,7 +130,7 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
     public CscMatrix<T> ToCsc()
     {
         var (colPtr, rowInd, vals) = TransposeBuffers();
-        return new CscMatrix<T>(Rows, Cols, colPtr, rowInd, vals);
+        return new CscMatrix<T>(Rows, Cols, colPtr, rowInd, vals, NNZ);
     }
 
     private (DeviceBuffer<int> ColOffsets, DeviceBuffer<int> RowIndices, DeviceBuffer<T> Values) TransposeBuffers()
@@ -129,8 +143,9 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
 
         var cudaType = CudaRuntime.GetCudaDataType<T>();
         var colPtr = new DeviceBuffer<int>(Cols + 1);
-        var rowInd = new DeviceBuffer<int>(NNZ);
-        var vals = new DeviceBuffer<T>(NNZ);
+        // At least one element, so an empty matrix does not need a zero-sized allocation.
+        var rowInd = new DeviceBuffer<int>(Math.Max(NNZ, 1));
+        var vals = new DeviceBuffer<T>(Math.Max(NNZ, 1));
         nint handle = CuSparseNative.Create();
         void* buffer = null;
         Workspace ws = default;

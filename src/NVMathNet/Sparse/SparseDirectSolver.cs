@@ -74,6 +74,7 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
     private nint _matrixDesc;
     private bool _analyzed;
     private bool _factorized;
+    private bool _valuesChanged;
     private bool _disposed;
 
     /// <summary>Creates a solver for <paramref name="matrix"/>.</summary>
@@ -132,6 +133,8 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
     public void Analyze()
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
+        _analyzed = false;
+        _factorized = false;
         RunPhase(CuDssPhase.Analysis);
         NVMathLog.Debug("cuDSS", () => $"Analysis done for {_matrix.Rows}x{_matrix.Cols} matrix with {_matrix.NNZ} non-zeros.");
         _analyzed = true;
@@ -151,10 +154,12 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
             Analyze();
         }
 
+        _factorized = false; // stays false if the phase fails, so a later Solve cannot use stale factors
         RunPhase(CuDssPhase.Factorization);
         CheckInfo("factorization");
         NVMathLog.Debug("cuDSS", () => $"Factorization done: {FactorNonZeros} non-zeros in the factors, {PerturbedPivots} perturbed pivot(s).");
         _factorized = true;
+        _valuesChanged = false;
     }
 
     /// <summary>
@@ -170,13 +175,16 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
             return;
         }
 
+        _factorized = false; // a failed refactorization leaves unusable factors
         RunPhase(CuDssPhase.Refactorization);
         CheckInfo("refactorization");
+        _factorized = true;
+        _valuesChanged = false;
     }
 
     /// <summary>
-    /// Points the solver at a different values array (same sparsity pattern). Call
-    /// <see cref="Refactorize"/> afterwards.
+    /// Points the solver at a different values array (same sparsity pattern). <see cref="Solve"/> refactorises
+    /// automatically afterwards; call <see cref="Refactorize"/> explicitly to do it earlier.
     /// </summary>
     public unsafe void SetValues(DeviceBuffer<T> values)
     {
@@ -188,6 +196,7 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
         }
 
         CuDssNative.MatrixSetValues(_matrixDesc, values.Pointer);
+        _valuesChanged = true;
     }
 
     /// <summary>
@@ -211,6 +220,10 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
         if (!_factorized)
         {
             Factorize();
+        }
+        else if (_valuesChanged)
+        {
+            Refactorize();
         }
 
         nint bDesc = 0, xDesc = 0;

@@ -28,6 +28,8 @@ public static partial class DenseSolver
 
     private static unsafe int LuFactorComplexCore(DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, int m, int n, CudaStream s)
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(ipiv.Length, Math.Min(m, n), nameof(ipiv));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -92,6 +94,8 @@ public static partial class DenseSolver
     private static unsafe void LuSolveComplexCore(
         DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, DeviceBuffer<Complex> b, int n, int nrhs, int trans, CudaStream s)
     {
+        Dim(n, nameof(n)); Dim(nrhs, nameof(nrhs));
+        Need(a.Length, (long)n * n, nameof(a)); Need(ipiv.Length, n, nameof(ipiv)); Need(b.Length, (long)n * nrhs, nameof(b));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -121,6 +125,8 @@ public static partial class DenseSolver
 
     private static unsafe void QrComplexCore(DeviceBuffer<Complex> a, DeviceBuffer<Complex> tau, int m, int n, CudaStream s)
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(tau.Length, Math.Min(m, n), nameof(tau));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -155,6 +161,8 @@ public static partial class DenseSolver
 
     private static unsafe void QrFormQComplexCore(DeviceBuffer<Complex> a, DeviceBuffer<Complex> tau, int m, int n, CudaStream s)
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(tau.Length, Math.Min(m, n), nameof(tau));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -192,6 +200,8 @@ public static partial class DenseSolver
     private static unsafe void LeastSquaresComplexCore(
         DeviceBuffer<Complex> a, DeviceBuffer<Complex> b, int m, int n, int nrhs, CudaStream s)
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n)); Dim(nrhs, nameof(nrhs));
+        Need(a.Length, (long)m * n, nameof(a)); Need(b.Length, (long)Math.Max(m, n) * nrhs, nameof(b));
         nint solver = CuSolverNative.Create();
         nint blas = CuBlasNative.Create();
         CuSolverNative.SetStream(solver, s.Handle);
@@ -253,6 +263,8 @@ public static partial class DenseSolver
 
     private static unsafe void CholeskyComplexCore(DeviceBuffer<Complex> a, int n, bool upper, CudaStream s)
     {
+        Dim(n, nameof(n));
+        Need(a.Length, (long)n * n, nameof(a));
         var uplo = upper ? CuBlasFillMode.Upper : CuBlasFillMode.Lower;
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
@@ -295,6 +307,8 @@ public static partial class DenseSolver
     private static unsafe void HermitianEigCore(
         DeviceBuffer<Complex> a, DeviceBuffer<double> w, int n, bool computeVectors, bool upper, CudaStream s)
     {
+        Dim(n, nameof(n));
+        Need(a.Length, (long)n * n, nameof(a)); Need(w.Length, n, nameof(w));
         var jobz = computeVectors ? CuSolverEigMode.Vector : CuSolverEigMode.NoVector;
         var uplo = upper ? CuBlasFillMode.Upper : CuBlasFillMode.Lower;
         nint handle = CuSolverNative.Create();

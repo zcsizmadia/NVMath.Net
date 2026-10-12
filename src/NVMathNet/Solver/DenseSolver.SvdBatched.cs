@@ -59,6 +59,10 @@ public static partial class DenseSolver
         int m, int n, int batchCount, bool computeVectors, CudaStream stream)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n)); Dim(batchCount, nameof(batchCount));
+        Need(a.Length, (long)m * n * batchCount, nameof(a)); Need(s.Length, (long)Math.Min(m, n) * batchCount, nameof(s));
+        if (u is not null) { Need(u.Length, (long)m * m * batchCount, nameof(u)); }
+        if (v is not null) { Need(v.Length, (long)n * n * batchCount, nameof(v)); }
         var jobz = computeVectors ? CuSolverEigMode.Vector : CuSolverEigMode.NoVector;
         // cuSOLVER dereferences U and V even for NOVECTOR, so supply scratch buffers when the caller has none.
         using var scratchU = u is null ? new DeviceBuffer<T>((long)m * m * batchCount) : null;

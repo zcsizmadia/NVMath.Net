@@ -25,7 +25,7 @@ public sealed class CscMatrix<T> : IDisposable where T : unmanaged, INumberBase<
     public long Cols { get; }
 
     /// <summary>Number of non-zero elements.</summary>
-    public long NNZ => Values.Length;
+    public long NNZ { get; }
 
     /// <summary>Column offsets — length Cols+1.</summary>
     public DeviceBuffer<int> ColOffsets { get; }
@@ -54,16 +54,36 @@ public sealed class CscMatrix<T> : IDisposable where T : unmanaged, INumberBase<
     /// <param name="colOffsets">Column offsets (length cols+1).</param>
     /// <param name="rowIndices">Row indices (length NNZ).</param>
     /// <param name="values">Non-zero values (length NNZ).</param>
+    /// <param name="nnz">
+    /// Number of stored entries when it is smaller than the buffer length (for example <c>0</c> for an
+    /// empty matrix backed by one-element placeholder buffers); <c>null</c> uses the length of <paramref name="values"/>.
+    /// </param>
     public unsafe CscMatrix(
         long rows, long cols,
         DeviceBuffer<int> colOffsets,
         DeviceBuffer<int> rowIndices,
-        DeviceBuffer<T> values)
+        DeviceBuffer<T> values,
+        long? nnz = null)
     {
         ArgumentNullException.ThrowIfNull(colOffsets);
         ArgumentNullException.ThrowIfNull(rowIndices);
         ArgumentNullException.ThrowIfNull(values);
+        ArgumentOutOfRangeException.ThrowIfNegative(rows);
+        ArgumentOutOfRangeException.ThrowIfNegative(cols);
 
+        long count = nnz ?? values.Length;
+        ArgumentOutOfRangeException.ThrowIfNegative(count, nameof(nnz));
+        if (colOffsets.Length < cols + 1)
+        {
+            throw new ArgumentException($"colOffsets holds {colOffsets.Length} elements but cols + 1 = {cols + 1} are required.", nameof(colOffsets));
+        }
+
+        if (rowIndices.Length < count || values.Length < count)
+        {
+            throw new ArgumentException($"rowIndices and values must each hold at least {count} elements.", nameof(values));
+        }
+
+        NNZ = count;
         Rows = rows;
         Cols = cols;
         ColOffsets = colOffsets;
@@ -71,7 +91,7 @@ public sealed class CscMatrix<T> : IDisposable where T : unmanaged, INumberBase<
         Values = values;
 
         _descriptor = CuSparseNative.CreateCsc(
-            rows, cols, values.Length,
+            rows, cols, count,
             colOffsets.Pointer, rowIndices.Pointer, values.Pointer,
             CuSparseIndexType.Int32, CuSparseIndexType.Int32, CuSparseIndexBase.Zero,
             CudaRuntime.GetCudaDataType<T>());

@@ -75,6 +75,9 @@ public static partial class SparseLinearAlgebra
         Span<byte> alphaStore = stackalloc byte[AlignedScalar.StorageSize];
         T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
+        CuSparseNative.SpMatGetSize(matrixDesc, out long rowsA, out _, out _);
+        RequireLength(x.Length, rowsA, nameof(x));
+        RequireLength(y.Length, rowsA, nameof(y));
         var handle = CreateHandle(s);
         nint vecX = 0, vecY = 0, descr = 0;
         void* buffer = null;
@@ -110,6 +113,8 @@ public static partial class SparseLinearAlgebra
             {
                 CuSparseNative.DestroyDnVec(vecY);
             }
+
+            SyncQuietly(s);
 
             ws.Dispose();
 
@@ -165,6 +170,9 @@ public static partial class SparseLinearAlgebra
         Span<byte> alphaStore = stackalloc byte[AlignedScalar.StorageSize];
         T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
+        ArgumentOutOfRangeException.ThrowIfLessThan(n, 1);
+        RequireLength(b.Length, m * n, nameof(b));
+        RequireLength(c.Length, m * n, nameof(c));
         var handle = CreateHandle(s);
         nint matB = 0, matC = 0, descr = 0;
         void* buffer = null;
@@ -200,6 +208,8 @@ public static partial class SparseLinearAlgebra
             {
                 CuSparseNative.DestroyDnMat(matC);
             }
+
+            SyncQuietly(s);
 
             ws.Dispose();
 
@@ -248,6 +258,9 @@ public static partial class SparseLinearAlgebra
         T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
         T* pBeta = AlignedScalar.Store(betaStore, beta);
         long m = c.Rows, n = c.Cols;
+        ArgumentOutOfRangeException.ThrowIfLessThan(k, 1);
+        RequireLength(a.Length, m * k, nameof(a));
+        RequireLength(b.Length, k * n, nameof(b));
         var handle = CreateHandle(s);
         nint matA = 0, matB = 0;
         void* buffer = null;
@@ -275,6 +288,8 @@ public static partial class SparseLinearAlgebra
             {
                 CuSparseNative.DestroyDnMat(matB);
             }
+
+            SyncQuietly(s);
 
             ws.Dispose();
 
@@ -366,6 +381,7 @@ public static partial class SparseLinearAlgebra
         }
         finally
         {
+            SyncQuietly(s);
             offsets?.Dispose();
             cols?.Dispose();
             vals?.Dispose();
@@ -378,6 +394,8 @@ public static partial class SparseLinearAlgebra
             {
                 CuSparseNative.DestroySpMat(matC);
             }
+
+            SyncQuietly(s);
 
             ws1.Dispose();
 
