@@ -421,6 +421,16 @@ public static partial class DenseSolver
         }
     }
 
+    /// <summary>Throws if cuSOLVER's <c>devInfo</c> is non-zero (failure or invalid argument).</summary>
+    private static void ThrowIfInfo(DeviceBuffer<int> devInfo, string what)
+    {
+        int info = devInfo.ToArray()[0];
+        if (info != 0)
+        {
+            throw new InvalidOperationException($"cuSOLVER {what}: info = {info}.");
+        }
+    }
+
     /// <summary>Reads the cuSOLVER <c>devInfo</c> value; throws for invalid-argument errors (info &lt; 0).</summary>
     private static int ReadInfo(DeviceBuffer<int> devInfo, string routine)
     {

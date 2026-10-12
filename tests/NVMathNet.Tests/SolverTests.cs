@@ -465,4 +465,41 @@ public sealed class SolverTests
         await Assert.That(async () => await DenseSolver.SvdBatchedAsync<double>(dA, dS, null, null, 33, 33, 1, computeVectors: false))
             .Throws<ArgumentOutOfRangeException>();
     }
+
+    // ── devInfo checks in the original overloads ─────────────────────────────
+
+    [Test]
+    public async Task Solve_SingularMatrix_Throws()
+    {
+        using var dA = new DeviceBuffer<double>(4);
+        using var dB = new DeviceBuffer<double>(2);
+        dA.CopyFrom(new double[] { 1, 2, 2, 4 }.AsSpan()); // [[1,2],[2,4]]
+        dB.CopyFrom(new double[] { 1, 1 }.AsSpan());
+
+        await Assert.That(async () => await DenseSolver.SolveAsync(dA, dB, 2)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Cholesky_NotPositiveDefinite_Throws()
+    {
+        using var dA = new DeviceBuffer<float>(4);
+        dA.CopyFrom(new float[] { 1, 2, 2, 1 }.AsSpan()); // indefinite
+
+        await Assert.That(async () => await DenseSolver.CholeskyAsync(dA, 2)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Solve_NonSingularMatrix_StillSucceeds()
+    {
+        using var dA = new DeviceBuffer<double>(4);
+        using var dB = new DeviceBuffer<double>(2);
+        dA.CopyFrom(new double[] { 2, 0, 0, 4 }.AsSpan()); // diag(2,4)
+        dB.CopyFrom(new double[] { 2, 4 }.AsSpan());
+
+        await DenseSolver.SolveAsync(dA, dB, 2);
+
+        double[] x = dB.ToArray();
+        await Assert.That(Math.Abs(x[0] - 1)).IsLessThan(1e-12);
+        await Assert.That(Math.Abs(x[1] - 1)).IsLessThan(1e-12);
+    }
 }
