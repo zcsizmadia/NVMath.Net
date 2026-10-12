@@ -78,6 +78,58 @@ public sealed unsafe class CsrMatrix<T> : IDisposable where T : unmanaged, INumb
             cudaType);
     }
 
+    /// <summary>
+    /// Returns a new CSR matrix holding the transpose of this matrix
+    /// (equivalently, this matrix converted to CSC). The caller owns the result.
+    /// </summary>
+    public CsrMatrix<T> Transpose()
+    {
+        ObjectDisposedException.ThrowIf(_disposed, this);
+        if (Rows > int.MaxValue || Cols > int.MaxValue || NNZ > int.MaxValue)
+        {
+            throw new NotSupportedException("Transpose supports 32-bit indexed matrices only.");
+        }
+
+        var cudaType = CudaRuntime.GetCudaDataType<T>();
+        var colPtr = new DeviceBuffer<int>(Cols + 1);
+        var rowInd = new DeviceBuffer<int>(NNZ);
+        var vals = new DeviceBuffer<T>(NNZ);
+        nint handle = CuSparseNative.Create();
+        void* buffer = null;
+        try
+        {
+            nuint size = CuSparseNative.Csr2CscEx2BufferSize(
+                handle, (int)Rows, (int)Cols, (int)NNZ,
+                Values.Pointer, (int*)RowOffsets.Pointer, (int*)ColIndices.Pointer,
+                vals.Pointer, (int*)colPtr.Pointer, (int*)rowInd.Pointer, cudaType);
+            buffer = size > 0 ? CudaRuntime.Malloc(size) : null;
+            CuSparseNative.Csr2CscEx2(
+                handle, (int)Rows, (int)Cols, (int)NNZ,
+                Values.Pointer, (int*)RowOffsets.Pointer, (int*)ColIndices.Pointer,
+                vals.Pointer, (int*)colPtr.Pointer, (int*)rowInd.Pointer, cudaType, buffer);
+            CudaRuntime.DeviceSynchronize();
+
+            // The CSC arrays of A are the CSR arrays of A^T.
+            return new CsrMatrix<T>(Cols, Rows, colPtr, rowInd, vals);
+        }
+        catch
+        {
+            colPtr.Dispose();
+            rowInd.Dispose();
+            vals.Dispose();
+            throw;
+        }
+        finally
+        {
+            if (buffer != null)
+            {
+                CudaRuntime.Free(buffer);
+            }
+
+            CuSparseNative.Destroy(handle);
+        }
+    }
+
     /// <inheritdoc/>
     public void Dispose()
     {

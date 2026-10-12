@@ -131,7 +131,7 @@ public enum CuSparseOperation : int
 /// <summary>
 /// Raw P/Invoke bindings for cuSPARSE.
 /// </summary>
-public static unsafe class CuSparseNative
+public static unsafe partial class CuSparseNative
 {
     private const string LibWindows = "cusparse64_12.dll";
     private const string LibLinux   = "libcusparse.so.12";

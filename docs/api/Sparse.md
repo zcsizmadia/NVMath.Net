@@ -40,3 +40,10 @@ Dense matrices passed to SpMM use **column-major** layout.
 |---|---|
 | `Task SpMVAsync<T>(CsrMatrix<T> A, DeviceBuffer<T> x, y, float alpha = 1f, float beta = 0f, bool transpose = false, CudaStream? stream = null, CancellationToken ct = default)` | Sparse matrix–vector: y = α·op(A)·x + β·y. Set `transpose = true` for A^T. |
 | `Task SpMMAsync<T>(CsrMatrix<T> A, DeviceBuffer<T> B, C, long n, float alpha = 1f, float beta = 0f, bool transpose = false, CudaStream? stream = null, CancellationToken ct = default)` | Sparse–dense: C = α·op(A)·B + β·C. `n` = columns in B/C. Set `transpose = true` for A^T. |
+| `Task SpSVAsync<T>(CsrMatrix<T> A, DeviceBuffer<T> x, y, SparseTriangle triangle = Lower, SparseDiagonal diagonal = NonUnit, T? alpha = null, bool transpose = false, ...)` | Triangular solve `op(A)·y = alpha·x` (vector RHS). |
+| `Task SpSMAsync<T>(CsrMatrix<T> A, DeviceBuffer<T> B, C, long n, SparseTriangle triangle = Lower, SparseDiagonal diagonal = NonUnit, T? alpha = null, bool transpose = false, ...)` | Triangular solve `op(A)·C = alpha·B` (dense matrix RHS, column-major). |
+| `Task SddmmAsync<T>(DeviceBuffer<T> A, DeviceBuffer<T> B, CsrMatrix<T> C, long k, T? alpha = null, T? beta = null, ...)` | Sampled dense-dense product `C = alpha·(A·B)∘spy(C) + beta·C`; C's values are updated in place. |
+| `Task<CsrMatrix<T>> SpGemmAsync<T>(CsrMatrix<T> A, CsrMatrix<T> B, T? alpha = null, ...)` | Sparse-sparse product; returns a new CSR matrix (throws if the product is empty). |
+
+`CsrMatrix<T>.Transpose()` returns a new CSR matrix holding the transpose (CSR→CSC conversion).
+The generic-API methods take scalars as `T` (matching the matrix element type); supported element types are `float`, `double` and `Half`.

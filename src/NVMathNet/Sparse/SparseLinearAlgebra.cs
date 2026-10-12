@@ -10,7 +10,7 @@ namespace NVMathNet.Sparse;
 /// <summary>
 /// Static helpers for sparse linear algebra operations using cuSPARSE.
 /// </summary>
-public static class SparseLinearAlgebra
+public static partial class SparseLinearAlgebra
 {
     /// <summary>
     /// Sparse matrix-vector product: y = alpha * op(A) * x + beta * y.

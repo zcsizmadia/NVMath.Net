@@ -198,4 +198,153 @@ public sealed class SparseTests
             await Assert.That(err).IsLessThan(1e-4f);
         }
     }
+
+    // ── Generic API: SpSV / SpSM / SDDMM / SpGEMM / Transpose ────────────────
+
+    // A = [[2,0,0],[1,3,0],[4,5,6]] (lower triangular)
+    private static CsrMatrix<float> MakeLower3()
+    {
+        return MakeCsr(3, 3, [0, 1, 3, 6], [0, 0, 1, 0, 1, 2], [2, 1, 3, 4, 5, 6]);
+    }
+
+    private static CsrMatrix<float> MakeCsr(int rows, int cols, int[] rowPtr, int[] colIdx, float[] vals)
+    {
+        var dRow = new DeviceBuffer<int>(rowPtr.Length);
+        var dCol = new DeviceBuffer<int>(colIdx.Length);
+        var dVal = new DeviceBuffer<float>(vals.Length);
+        dRow.CopyFrom(rowPtr.AsSpan());
+        dCol.CopyFrom(colIdx.AsSpan());
+        dVal.CopyFrom(vals.AsSpan());
+        return new CsrMatrix<float>(rows, cols, dRow, dCol, dVal);
+    }
+
+    private static float[,] ToDense(CsrMatrix<float> m)
+    {
+        int[] rp = m.RowOffsets.ToArray();
+        int[] ci = m.ColIndices.ToArray();
+        float[] v = m.Values.ToArray();
+        var d = new float[m.Rows, m.Cols];
+        for (int r = 0; r < m.Rows; r++)
+        {
+            for (int i = rp[r]; i < rp[r + 1]; i++)
+            {
+                d[r, ci[i]] = v[i];
+            }
+        }
+
+        return d;
+    }
+
+    [Test]
+    public async Task SpSV_LowerTriangular_Solves()
+    {
+        using var a = MakeLower3();
+        using var x = new DeviceBuffer<float>(3);
+        using var y = new DeviceBuffer<float>(3);
+        x.CopyFrom(new float[] { 2, 7, 32 }.AsSpan());
+        y.Clear();
+
+        await SparseLinearAlgebra.SpSVAsync(a, x, y, SparseTriangle.Lower);
+
+        float[] r = y.ToArray();
+        float[] expected = [1, 2, 3];
+        for (int i = 0; i < 3; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - expected[i])).IsLessThan(1e-4f);
+        }
+    }
+
+    [Test]
+    public async Task SpSV_Transpose_Solves()
+    {
+        // A^T y = x with A^T = [[2,1,4],[0,3,5],[0,0,6]] and y = [1,2,3] => x = [16,21,18]
+        using var a = MakeLower3();
+        using var x = new DeviceBuffer<float>(3);
+        using var y = new DeviceBuffer<float>(3);
+        x.CopyFrom(new float[] { 16, 21, 18 }.AsSpan());
+        y.Clear();
+
+        await SparseLinearAlgebra.SpSVAsync(a, x, y, SparseTriangle.Lower, transpose: true);
+
+        float[] r = y.ToArray();
+        float[] expected = [1, 2, 3];
+        for (int i = 0; i < 3; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - expected[i])).IsLessThan(1e-4f);
+        }
+    }
+
+    [Test]
+    public async Task SpSM_LowerTriangular_SolvesTwoColumns()
+    {
+        using var a = MakeLower3();
+        using var b = new DeviceBuffer<float>(6);
+        using var c = new DeviceBuffer<float>(6);
+        b.CopyFrom(new float[] { 2, 7, 32, 4, 14, 64 }.AsSpan()); // col-major 3x2
+        c.Clear();
+
+        await SparseLinearAlgebra.SpSMAsync(a, b, c, n: 2, SparseTriangle.Lower);
+
+        float[] r = c.ToArray();
+        float[] expected = [1, 2, 3, 2, 4, 6];
+        for (int i = 0; i < 6; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - expected[i])).IsLessThan(1e-4f);
+        }
+    }
+
+    [Test]
+    public async Task Sddmm_DiagonalPattern_ComputesSampledProduct()
+    {
+        // A = [[1,2],[3,4]], B = [[5,6],[7,8]] (col-major); A*B = [[19,22],[43,50]]
+        using var dA = new DeviceBuffer<float>(4);
+        using var dB = new DeviceBuffer<float>(4);
+        dA.CopyFrom(new float[] { 1, 3, 2, 4 }.AsSpan());
+        dB.CopyFrom(new float[] { 5, 7, 6, 8 }.AsSpan());
+        using var c = MakeCsr(2, 2, [0, 1, 2], [0, 1], [0, 0]);
+
+        await SparseLinearAlgebra.SddmmAsync(dA, dB, c, k: 2);
+
+        float[] vals = c.Values.ToArray();
+        await Assert.That(Math.Abs(vals[0] - 19f)).IsLessThan(1e-4f);
+        await Assert.That(Math.Abs(vals[1] - 50f)).IsLessThan(1e-4f);
+    }
+
+    [Test]
+    public async Task SpGemm_LowerTimesLower_MatchesDense()
+    {
+        using var a = MakeLower3();
+        using var b = MakeLower3();
+
+        using var c = await SparseLinearAlgebra.SpGemmAsync(a, b);
+
+        float[,] d = ToDense(c);
+        float[,] expected = { { 4, 0, 0 }, { 5, 9, 0 }, { 37, 45, 36 } };
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 3; j++)
+            {
+                await Assert.That(Math.Abs(d[i, j] - expected[i, j])).IsLessThan(1e-3f);
+            }
+        }
+    }
+
+    [Test]
+    public async Task CsrMatrix_Transpose_MatchesDense()
+    {
+        using var a = MakeCsr(2, 3, [0, 2, 3], [0, 2, 1], [1, 2, 3]); // [[1,0,2],[0,3,0]]
+        using var t = a.Transpose();
+
+        await Assert.That(t.Rows).IsEqualTo(3);
+        await Assert.That(t.Cols).IsEqualTo(2);
+        float[,] d = ToDense(t);
+        float[,] expected = { { 1, 0 }, { 0, 3 }, { 2, 0 } };
+        for (int i = 0; i < 3; i++)
+        {
+            for (int j = 0; j < 2; j++)
+            {
+                await Assert.That(Math.Abs(d[i, j] - expected[i, j])).IsLessThan(1e-5f);
+            }
+        }
+    }
 }
