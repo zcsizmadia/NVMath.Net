@@ -40,6 +40,9 @@ public sealed class Fft : IAsyncDisposable, IDisposable
     private nint   _outputPtr;
     private nuint  _workspaceSize;
     private nint   _workspacePtr;
+    private nint   _blas;              // lazily created, only for output normalization
+    private long   _signalSize;        // N: product of the transform-axis lengths
+    private long   _outputElements;    // output elements across the whole batch
 
     // ── Construction ──────────────────────────────────────────────────────────
 
@@ -192,6 +195,8 @@ public sealed class Fft : IAsyncDisposable, IDisposable
             unsafe { CuFftNative.SetWorkArea(_plan, (void*)_workspacePtr); }
         }
 
+        _signalSize = Product(n);
+        _outputElements = batchSize * Product(outDims);
         _planned = true;
     }
 
@@ -315,6 +320,55 @@ public sealed class Fft : IAsyncDisposable, IDisposable
             case CuFftType.Z2D:
                 CuFftNative.ExecZ2D(_plan, inp, out_);
                 break;
+        }
+
+        ApplyNormalization(direction, out_);
+    }
+
+    private unsafe void ApplyNormalization(FftDirection direction, void* output)
+    {
+        if (_options.Normalization == FftNormalization.None)
+        {
+            return;
+        }
+
+        // R2C is always a forward transform and C2R an inverse one; C2C follows the requested direction.
+        bool forward = _fftType switch
+        {
+            FftType.R2C => true,
+            FftType.C2R => false,
+            _ => direction == FftDirection.Forward,
+        };
+
+        double scale = _options.Normalization switch
+        {
+            FftNormalization.Backward => forward ? 1.0 : 1.0 / _signalSize,
+            FftNormalization.Forward => forward ? 1.0 / _signalSize : 1.0,
+            FftNormalization.Orthonormal => 1.0 / Math.Sqrt(_signalSize),
+            _ => 1.0,
+        };
+
+        if (scale == 1.0)
+        {
+            return;
+        }
+
+        if (_blas == 0)
+        {
+            _blas = CuBlasNative.Create();
+            CuBlasNative.SetStream(_blas, _ownedStream.Handle);
+        }
+
+        // Complex outputs are scaled as interleaved real pairs.
+        bool complexOutput = _fftType != FftType.C2R;
+        long scalars = _outputElements * (complexOutput ? 2 : 1);
+        if (_doublePrecision)
+        {
+            CuBlasNative.Dscal(_blas, scalars, scale, (double*)output);
+        }
+        else
+        {
+            CuBlasNative.Sscal(_blas, scalars, (float)scale, (float*)output);
         }
     }
 
@@ -532,6 +586,12 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         }
 
         _disposed = true;
+
+        if (_blas != 0)
+        {
+            CuBlasNative.Destroy(_blas);
+            _blas = 0;
+        }
 
         if (_plan != default)
         {

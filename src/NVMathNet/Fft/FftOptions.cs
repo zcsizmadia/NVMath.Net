@@ -59,6 +59,26 @@ public sealed class FftOptions
     /// Use <see cref="Fft.SynchronizeAsync"/> to wait for completion.
     /// </summary>
     public bool Blocking { get; set; }
+
+    /// <summary>
+    /// Scaling applied to the output after each transform. cuFFT itself never scales, so
+    /// <see cref="FftNormalization.None"/> (the default) leaves a forward+inverse round trip
+    /// multiplied by the signal size N.
+    /// </summary>
+    public FftNormalization Normalization { get; set; } = FftNormalization.None;
+}
+
+/// <summary>Output scaling modes, named after NumPy's <c>norm</c> argument.</summary>
+public enum FftNormalization
+{
+    /// <summary>No scaling (cuFFT behaviour).</summary>
+    None,
+    /// <summary>Scale by <c>1/N</c> on inverse transforms only (NumPy <c>"backward"</c>).</summary>
+    Backward,
+    /// <summary>Scale by <c>1/N</c> on forward transforms only (NumPy <c>"forward"</c>).</summary>
+    Forward,
+    /// <summary>Scale by <c>1/√N</c> on every transform, making it unitary (NumPy <c>"ortho"</c>).</summary>
+    Orthonormal,
 }
 
 /// <summary>For C2R FFTs, specifies whether the reconstructed last-axis size is even or odd.</summary>
