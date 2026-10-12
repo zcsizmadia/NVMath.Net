@@ -289,7 +289,9 @@ public static unsafe partial class CuTensorNative
         }
 
         string msg = $"cuTENSOR error {status} ({(int)status})";
-        throw new CuTensorException((int)status, context is null ? msg : $"{context}: {msg}");
+        string full = context is null ? msg : $"{context}: {msg}";
+        NVMathLog.Error("cuTENSOR", full);
+        throw new CuTensorException((int)status, full);
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────

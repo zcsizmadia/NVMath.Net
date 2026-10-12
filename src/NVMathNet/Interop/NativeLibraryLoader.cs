@@ -42,10 +42,15 @@ public static class NativeLibraryLoader
                 return cached;
             }
 
-            if (!NativeLibrary.TryLoad(libraryName, out nint handle))
+            bool onSearchPath = NativeLibrary.TryLoad(libraryName, out nint handle);
+            if (!onSearchPath)
             {
                 handle = LoadFromKnownPaths(libraryName);
             }
+
+            NVMathLog.Info("Loader", () => onSearchPath
+                ? $"Loaded native library {libraryName} from the default search path."
+                : $"Loaded native library {libraryName} from a known install location.");
 
             _handles[libraryName] = handle;
             return handle;

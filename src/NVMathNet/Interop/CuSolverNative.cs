@@ -239,7 +239,9 @@ public static unsafe partial class CuSolverNative
         }
 
         string msg = $"cuSOLVER error {status} ({(int)status})";
-        throw new CuSolverException((int)status, context is null ? msg : $"{context}: {msg}");
+        string full = context is null ? msg : $"{context}: {msg}";
+        NVMathLog.Error("cuSOLVER", full);
+        throw new CuSolverException((int)status, full);
     }
 
     // ── Public API ───────────────────────────────────────────────────────────

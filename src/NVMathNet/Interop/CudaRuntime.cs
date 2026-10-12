@@ -232,7 +232,9 @@ public static unsafe class CudaRuntime
         }
 
         string msg = GetErrorString(error);
-        throw new CudaException(error, context is null ? msg : $"{context}: {msg}");
+        string full = context is null ? msg : $"{context}: {msg}";
+        NVMathLog.Error("CUDA", full);
+        throw new CudaException(error, full);
     }
 
     /// <summary>Returns the human-readable description for a CUDA error code.</summary>

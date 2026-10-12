@@ -137,3 +137,14 @@ using var a = new DeviceBuffer<float>(1 << 20);
 ```
 
 Library-internal scratch memory (cuFFT, cuBLASLt, cuTENSOR, cuSPARSE and Csr transpose workspaces) is also allocated through `DeviceMemory.Default`, so a pooling manager covers it, not just `DeviceBuffer<T>`. cuDSS and cuSOLVER allocate their own internal memory.
+
+## Logging (`NVMathLog`)
+
+| Member | Description |
+|---|---|
+| `NVMathLog.Handler` | `Action<NVMathLogLevel, string, string>?` receiving `(level, category, message)`; `null` (default) disables logging. |
+| `NVMathLog.MinimumLevel` | Messages below this level are dropped. Default `Information`. |
+| `NVMathLog.IsEnabled(level)` | Whether a message at `level` would be delivered. |
+| `NVMathLogLevel` | `Trace`, `Debug`, `Information`, `Warning`, `Error`, `None`. |
+
+See [Core concepts](../articles/concepts.md#logging) for what each level covers.

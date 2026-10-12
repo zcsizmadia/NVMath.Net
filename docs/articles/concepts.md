@@ -112,3 +112,29 @@ await ctx.ForEachDeviceAsync(async (index, deviceId, stream) =>
 `alpha`/`beta` parameters are `double` (or `T`, where noted) and are converted to the type the native routine
 expects, usually the compute type of the operation: half, float or double. Complex data uses
 `System.Numerics.Complex` (double precision) where supported; .NET has no single-precision complex type.
+
+## Logging
+
+The library is silent by default. Install a handler on `NVMathLog` to receive diagnostics, for example to forward
+them to `Microsoft.Extensions.Logging` (NVMath.Net itself has no logging dependency):
+
+```csharp
+NVMathLog.MinimumLevel = NVMathLogLevel.Information;
+NVMathLog.Handler = (level, category, message) =>
+    logger.Log(level switch
+    {
+        NVMathLogLevel.Error => LogLevel.Error,
+        NVMathLogLevel.Warning => LogLevel.Warning,
+        NVMathLogLevel.Information => LogLevel.Information,
+        _ => LogLevel.Debug,
+    }, "{Category}: {Message}", category, message);
+```
+
+| Level | What is logged |
+|---|---|
+| `Error` | Every failed native call (library, function and status), immediately before the typed exception is thrown |
+| `Information` | Native libraries being loaded, `Matmul.Autotune` results |
+| `Debug` | Plan details: chosen shapes, candidate algorithms, workspace sizes, cuDSS phases |
+
+The handler runs synchronously on the calling thread (possibly from several threads at once), so keep it fast and
+thread-safe. Exceptions thrown by the handler are swallowed so logging can never break a GPU operation.

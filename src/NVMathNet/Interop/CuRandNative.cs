@@ -144,7 +144,9 @@ public static unsafe partial class CuRandNative
         }
 
         string msg = $"cuRAND error {status} ({(int)status})";
-        throw new CuRandException((int)status, context is null ? msg : $"{context}: {msg}");
+        string full = context is null ? msg : $"{context}: {msg}";
+        NVMathLog.Error("cuRAND", full);
+        throw new CuRandException((int)status, full);
     }
 
     // ── Public API ───────────────────────────────────────────────────────────

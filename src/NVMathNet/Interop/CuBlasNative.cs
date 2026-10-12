@@ -361,7 +361,9 @@ public static unsafe partial class CuBlasNative
         }
 
         string msg = $"cuBLAS error {status} ({(int)status})";
-        throw new CuBlasException((int)status, context is null ? msg : $"{context}: {msg}");
+        string full = context is null ? msg : $"{context}: {msg}";
+        NVMathLog.Error("cuBLAS", full);
+        throw new CuBlasException((int)status, full);
     }
 
     // ── Public API (cuBLASLt) ─────────────────────────────────────────────────

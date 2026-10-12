@@ -128,6 +128,7 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         RunPhase(CuDssPhase.Analysis);
+        NVMathLog.Debug("cuDSS", () => $"Analysis done for {_matrix.Rows}x{_matrix.Cols} matrix with {_matrix.NNZ} non-zeros.");
         _analyzed = true;
         _factorized = false;
     }
@@ -147,6 +148,7 @@ public sealed class SparseDirectSolver<T> : IDisposable where T : unmanaged, INu
 
         RunPhase(CuDssPhase.Factorization);
         CheckInfo("factorization");
+        NVMathLog.Debug("cuDSS", () => $"Factorization done: {FactorNonZeros} non-zeros in the factors, {PerturbedPivots} perturbed pivot(s).");
         _factorized = true;
     }
 

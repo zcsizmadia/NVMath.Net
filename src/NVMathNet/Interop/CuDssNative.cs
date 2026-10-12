@@ -155,7 +155,9 @@ public static unsafe class CuDssNative
         }
 
         string msg = $"cuDSS error {status} ({(int)status})";
-        throw new CuDssException((int)status, context is null ? msg : $"{context}: {msg}");
+        string full = context is null ? msg : $"{context}: {msg}";
+        NVMathLog.Error("cuDSS", full);
+        throw new CuDssException((int)status, full);
     }
 
     // ── Handle / stream ───────────────────────────────────────────────────────

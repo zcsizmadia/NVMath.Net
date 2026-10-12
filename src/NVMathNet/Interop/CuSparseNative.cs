@@ -252,7 +252,9 @@ public static unsafe partial class CuSparseNative
         }
 
         string msg = $"cuSPARSE error {status} ({(int)status})";
-        throw new CuSparseException((int)status, context is null ? msg : $"{context}: {msg}");
+        string full = context is null ? msg : $"{context}: {msg}";
+        NVMathLog.Error("cuSPARSE", full);
+        throw new CuSparseException((int)status, full);
     }
 
     // ── Public API ─────────────────────────────────────────────────────────────
