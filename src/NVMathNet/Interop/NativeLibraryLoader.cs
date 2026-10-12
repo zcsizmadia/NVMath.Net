@@ -126,6 +126,12 @@ public static class NativeLibraryLoader
                     return handle;
                 }
             }
+
+            // cuDSS standalone install: C:\Program Files\NVIDIA cuDSS\vX.Y\bin\<cuda-major>
+            if (TryLoadStandalone("NVIDIA cuDSS", "CUDSS_ROOT", libraryName, out nint dssHandle))
+            {
+                return dssHandle;
+            }
         }
         else
         {
@@ -169,6 +175,25 @@ public static class NativeLibraryLoader
             }
         }
 
+        // cuDSS: bin/<cuda-major> and bin (its helper libraries sit next to cudss64_0.dll)
+        string cuDssBase = Path.Combine(programFiles, "NVIDIA cuDSS");
+        if (Directory.Exists(cuDssBase))
+        {
+            foreach (string versionDir in Directory.GetDirectories(cuDssBase, "v*"))
+            {
+                string binDir = Path.Combine(versionDir, "bin");
+                if (Directory.Exists(binDir))
+                {
+                    foreach (string subDir in Directory.GetDirectories(binDir))
+                    {
+                        TryAddDllDir(subDir);
+                    }
+
+                    TryAddDllDir(binDir);
+                }
+            }
+        }
+
         // cuTENSOR: bin/<cuda-major> and bin
         string cuTensorBase = Path.Combine(programFiles, "NVIDIA cuTENSOR");
         if (Directory.Exists(cuTensorBase))
@@ -187,6 +212,45 @@ public static class NativeLibraryLoader
                 }
             }
         }
+    }
+
+    /// <summary>
+    /// Probes a vendor install of the form <c>Program Files\&lt;product&gt;\vX.Y\bin\&lt;cuda-major&gt;</c>
+    /// (newest first), then the optional <paramref name="rootEnvVar"/> directory.
+    /// </summary>
+    private static bool TryLoadStandalone(string product, string rootEnvVar, string libraryName, out nint handle)
+    {
+        var roots = new List<string>();
+        string baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), product);
+        if (Directory.Exists(baseDir))
+        {
+            roots.AddRange(Directory.GetDirectories(baseDir, "v*").OrderDescending());
+        }
+
+        if (Environment.GetEnvironmentVariable(rootEnvVar) is { Length: > 0 } envRoot)
+        {
+            roots.Add(envRoot);
+        }
+
+        foreach (string root in roots)
+        {
+            string binDir = Path.Combine(root, "bin");
+            if (!Directory.Exists(binDir))
+            {
+                continue;
+            }
+
+            foreach (string dir in Directory.GetDirectories(binDir).OrderDescending().Append(binDir))
+            {
+                if (NativeLibrary.TryLoad(Path.Combine(dir, libraryName), out handle))
+                {
+                    return true;
+                }
+            }
+        }
+
+        handle = 0;
+        return false;
     }
 
     private static void TryAddDllDir(string dir)
