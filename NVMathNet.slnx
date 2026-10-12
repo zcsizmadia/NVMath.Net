@@ -1,13 +1,20 @@
 <Solution>
   <Folder Name="/samples/">
     <Project Path="samples/ChainingSample/ChainingSample.csproj" />
+    <Project Path="samples/ComplexSample/ComplexSample.csproj" />
     <Project Path="samples/DirectSolverSample/DirectSolverSample.csproj" />
+    <Project Path="samples/FftAdvancedSample/FftAdvancedSample.csproj" />
     <Project Path="samples/FftSample/FftSample.csproj" />
+    <Project Path="samples/LeastSquaresSample/LeastSquaresSample.csproj" />
+    <Project Path="samples/MatmulAdvancedSample/MatmulAdvancedSample.csproj" />
     <Project Path="samples/MatmulSample/MatmulSample.csproj" />
+    <Project Path="samples/MemoryAndLoggingSample/MemoryAndLoggingSample.csproj" />
     <Project Path="samples/RandSample/RandSample.csproj" />
     <Project Path="samples/SolverSample/SolverSample.csproj" />
+    <Project Path="samples/SparseAdvancedSample/SparseAdvancedSample.csproj" />
     <Project Path="samples/SparseSample/SparseSample.csproj" />
     <Project Path="samples/TensorSample/TensorSample.csproj" />
+    <Project Path="samples/TensorOpsSample/TensorOpsSample.csproj" />
   </Folder>
   <Folder Name="/src/">
     <Project Path="src/NVMathNet/NVMathNet.csproj" />
