@@ -502,4 +502,202 @@ public sealed class SolverTests
         await Assert.That(Math.Abs(x[0] - 1)).IsLessThan(1e-12);
         await Assert.That(Math.Abs(x[1] - 1)).IsLessThan(1e-12);
     }
+
+    // ── Complex (double) variants ────────────────────────────────────────────
+
+    private static System.Numerics.Complex[] ComplexMatrix(int rows, int cols, int seed)
+    {
+        var m = new System.Numerics.Complex[rows * cols];
+        for (int c = 0; c < cols; c++)
+        {
+            for (int r = 0; r < rows; r++)
+            {
+                m[r + rows * c] = new System.Numerics.Complex(
+                    Math.Sin(seed + r * 1.3 + c * 0.7) + (r == c ? 4 : 0),
+                    Math.Cos(seed + r * 0.9 - c * 1.1));
+            }
+        }
+
+        return m;
+    }
+
+    private static System.Numerics.Complex[] MatVec(System.Numerics.Complex[] a, int rows, int cols, System.Numerics.Complex[] x, bool conjTranspose = false)
+    {
+        int outLen = conjTranspose ? cols : rows;
+        var y = new System.Numerics.Complex[outLen];
+        for (int i = 0; i < outLen; i++)
+        {
+            System.Numerics.Complex sum = 0;
+            int inner = conjTranspose ? rows : cols;
+            for (int k = 0; k < inner; k++)
+            {
+                sum += conjTranspose
+                    ? System.Numerics.Complex.Conjugate(a[k + rows * i]) * x[k]
+                    : a[i + rows * k] * x[k];
+            }
+
+            y[i] = sum;
+        }
+
+        return y;
+    }
+
+    [Test]
+    public async Task Complex_LuFactor_LuSolve_SolvesAndConjugateTransposeSolves()
+    {
+        const int N = 5;
+        var a = ComplexMatrix(N, N, 1);
+        var xTrue = Enumerable.Range(0, N).Select(i => new System.Numerics.Complex(i + 1, 0.5 * i - 1)).ToArray();
+
+        foreach (bool conj in new[] { false, true })
+        {
+            var b = MatVec(a, N, N, xTrue, conjTranspose: conj);
+            using var dA = new DeviceBuffer<System.Numerics.Complex>(N * N);
+            using var dB = new DeviceBuffer<System.Numerics.Complex>(N);
+            using var dPiv = new DeviceBuffer<int>(N);
+            dA.CopyFrom(a.AsSpan());
+            dB.CopyFrom(b.AsSpan());
+
+            int info = await DenseSolver.LuFactorAsync(dA, dPiv, N, N);
+            await Assert.That(info).IsEqualTo(0);
+            await DenseSolver.LuSolveAsync(dA, dPiv, dB, N, 1, transpose: conj, conjugate: conj);
+
+            var x = dB.ToArray();
+            for (int i = 0; i < N; i++)
+            {
+                await Assert.That((x[i] - xTrue[i]).Magnitude).IsLessThan(1e-9);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Complex_Qr_FormQ_IsUnitaryAndReconstructs()
+    {
+        const int M = 5, N = 3;
+        var a = ComplexMatrix(M, N, 2);
+        using var dA = new DeviceBuffer<System.Numerics.Complex>(M * N);
+        using var dTau = new DeviceBuffer<System.Numerics.Complex>(N);
+        dA.CopyFrom(a.AsSpan());
+
+        await DenseSolver.QrAsync(dA, dTau, M, N);
+        var fact = dA.ToArray();
+        await DenseSolver.QrFormQAsync(dA, dTau, M, N);
+        var q = dA.ToArray();
+
+        for (int i = 0; i < N; i++)
+        {
+            for (int j = 0; j < N; j++)
+            {
+                System.Numerics.Complex dot = 0;
+                for (int r = 0; r < M; r++)
+                {
+                    dot += System.Numerics.Complex.Conjugate(q[r + M * i]) * q[r + M * j];
+                }
+
+                await Assert.That((dot - (i == j ? 1.0 : 0.0)).Magnitude).IsLessThan(1e-9);
+            }
+        }
+
+        for (int r = 0; r < M; r++)
+        {
+            for (int c = 0; c < N; c++)
+            {
+                System.Numerics.Complex sum = 0;
+                for (int k = 0; k <= c; k++)
+                {
+                    sum += q[r + M * k] * fact[k + M * c];
+                }
+
+                await Assert.That((sum - a[r + M * c]).Magnitude).IsLessThan(1e-9);
+            }
+        }
+    }
+
+    [Test]
+    public async Task Complex_LeastSquares_RecoversExactSolutionOfConsistentSystem()
+    {
+        const int M = 6, N = 3;
+        var a = ComplexMatrix(M, N, 3);
+        var xTrue = new[] { new System.Numerics.Complex(1, -1), new System.Numerics.Complex(0.5, 2), new System.Numerics.Complex(-2, 0.25) };
+        var b = MatVec(a, M, N, xTrue);
+
+        using var dA = new DeviceBuffer<System.Numerics.Complex>(M * N);
+        using var dB = new DeviceBuffer<System.Numerics.Complex>(M);
+        dA.CopyFrom(a.AsSpan());
+        dB.CopyFrom(b.AsSpan());
+
+        await DenseSolver.LeastSquaresAsync(dA, dB, M, N);
+
+        var x = dB.ToArray();
+        for (int i = 0; i < N; i++)
+        {
+            await Assert.That((x[i] - xTrue[i]).Magnitude).IsLessThan(1e-9);
+        }
+    }
+
+    [Test]
+    public async Task Complex_Cholesky_FactorsHermitianPositiveDefinite_AndRejectsIndefinite()
+    {
+        // A = [[4, 1-1i],[1+1i, 3]] is Hermitian positive definite.
+        var hpd = new[]
+        {
+            new System.Numerics.Complex(4, 0), new System.Numerics.Complex(1, 1),
+            new System.Numerics.Complex(1, -1), new System.Numerics.Complex(3, 0),
+        };
+        using var dA = new DeviceBuffer<System.Numerics.Complex>(4);
+        dA.CopyFrom(hpd.AsSpan());
+        await DenseSolver.CholeskyAsync(dA, 2);
+        var l = dA.ToArray(); // lower factor: L00 = 2, L10 = (1+1i)/2, L11 = sqrt(3 - 0.5)
+        await Assert.That((l[0] - 2.0).Magnitude).IsLessThan(1e-9);
+        await Assert.That((l[1] - new System.Numerics.Complex(0.5, 0.5)).Magnitude).IsLessThan(1e-9);
+        await Assert.That(Math.Abs(l[3].Real - Math.Sqrt(2.5))).IsLessThan(1e-9);
+
+        var indefinite = new[]
+        {
+            new System.Numerics.Complex(1, 0), new System.Numerics.Complex(3, 1),
+            new System.Numerics.Complex(3, -1), new System.Numerics.Complex(1, 0),
+        };
+        using var dB = new DeviceBuffer<System.Numerics.Complex>(4);
+        dB.CopyFrom(indefinite.AsSpan());
+        await Assert.That(async () => await DenseSolver.CholeskyAsync(dB, 2)).Throws<InvalidOperationException>();
+    }
+
+    [Test]
+    public async Task Complex_HermitianEig_RealEigenvaluesAndEigenvectorsSatisfyAvEqLambdaV()
+    {
+        // Hermitian 3x3
+        var h = new System.Numerics.Complex[9];
+        System.Numerics.Complex[,] src =
+        {
+            { 2, new(1, 1), 0 },
+            { new(1, -1), 3, new(0, 2) },
+            { 0, new(0, -2), 1 },
+        };
+        for (int c = 0; c < 3; c++)
+        {
+            for (int r = 0; r < 3; r++)
+            {
+                h[r + 3 * c] = src[r, c];
+            }
+        }
+
+        using var dA = new DeviceBuffer<System.Numerics.Complex>(9);
+        using var dW = new DeviceBuffer<double>(3);
+        dA.CopyFrom(h.AsSpan());
+
+        await DenseSolver.HermitianEigAsync(dA, dW, 3);
+
+        double[] w = dW.ToArray();
+        var v = dA.ToArray();
+        await Assert.That(w[0] <= w[1] && w[1] <= w[2]).IsTrue();
+        for (int k = 0; k < 3; k++)
+        {
+            var vec = new[] { v[3 * k], v[3 * k + 1], v[3 * k + 2] };
+            var av = MatVec(h, 3, 3, vec);
+            for (int i = 0; i < 3; i++)
+            {
+                await Assert.That((av[i] - w[k] * vec[i]).Magnitude).IsLessThan(1e-9);
+            }
+        }
+    }
 }
