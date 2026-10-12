@@ -95,6 +95,11 @@ First stable release. The public API is now considered stable; breaking changes 
   sticky error state) and the real `SvdAsync` rejects `m < n` with a clear message; `CudaRandom` no longer leaks its
   generator when configuration fails and `FillPoisson` rejects non-finite or oversized lambda.
 
+- **Review fixes (memory / native loading):** `CachingMemoryManager` keeps its blocks per CUDA device and retries
+  once after trimming its cache when the device runs out of memory; the native library loader orders install
+  directories by version number (`v2.10` before `v2.8`), probes `CUTENSOR_ROOT` correctly and no longer logs while
+  holding its lock. `NativeLibraryLoader.UnloadAll` is documented as unsafe while wrappers are in use.
+
 ### Not included (tracked after 1.0)
 
 Block-scaled MXFP8/NVFP4 matmul (needs Blackwell hardware to verify) and FFT prolog/epilog callbacks (needs

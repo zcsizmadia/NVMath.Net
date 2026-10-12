@@ -35,6 +35,8 @@ public static class NativeLibraryLoader
     /// <summary>Loads or retrieves a cached handle for <paramref name="libraryName"/>.</summary>
     public static nint GetOrLoad(string libraryName)
     {
+        bool onSearchPath;
+        nint handle;
         lock (_lock)
         {
             if (_handles.TryGetValue(libraryName, out nint cached))
@@ -42,19 +44,20 @@ public static class NativeLibraryLoader
                 return cached;
             }
 
-            bool onSearchPath = NativeLibrary.TryLoad(libraryName, out nint handle);
+            onSearchPath = NativeLibrary.TryLoad(libraryName, out handle);
             if (!onSearchPath)
             {
                 handle = LoadFromKnownPaths(libraryName);
             }
 
-            NVMathLog.Info("Loader", () => onSearchPath
-                ? $"Loaded native library {libraryName} from the default search path."
-                : $"Loaded native library {libraryName} from a known install location.");
-
             _handles[libraryName] = handle;
-            return handle;
         }
+
+        // Logged outside the lock: a log handler is user code and must not be able to deadlock the loader.
+        NVMathLog.Info("Loader", () => onSearchPath
+            ? $"Loaded native library {libraryName} from the default search path."
+            : $"Loaded native library {libraryName} from a known install location.");
+        return handle;
     }
 
     /// <summary>
@@ -75,7 +78,7 @@ public static class NativeLibraryLoader
 
             if (Directory.Exists(baseDir))
             {
-                foreach (string versionDir in Directory.GetDirectories(baseDir, "v*").OrderDescending())
+                foreach (string versionDir in Directory.GetDirectories(baseDir, "v*").OrderByDescending(Path.GetFileName, VersionedNameComparer.Instance))
                 {
                     // Try bin/x64 first (CUDA 13+), then bin (older layouts)
                     string[] subDirs = [Path.Combine(versionDir, "bin", "x64"), Path.Combine(versionDir, "bin")];
@@ -90,46 +93,10 @@ public static class NativeLibraryLoader
                 }
             }
 
-            // cuTENSOR standalone install: C:\Program Files\NVIDIA cuTENSOR\vX.Y\bin\<cuda-major>
-            string cuTensorBase = Path.Combine(
-                Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles),
-                "NVIDIA cuTENSOR");
-
-            if (Directory.Exists(cuTensorBase))
+            // cuTENSOR standalone install: Program Files, NVIDIA cuTENSOR, vX.Y, bin, cuda-major
+            if (TryLoadStandalone("NVIDIA cuTENSOR", "CUTENSOR_ROOT", libraryName, out nint tensorHandle))
             {
-                foreach (string versionDir in Directory.GetDirectories(cuTensorBase, "v*").OrderDescending())
-                {
-                    string binDir = Path.Combine(versionDir, "bin");
-                    if (Directory.Exists(binDir))
-                    {
-                        // Try versioned subdirs (e.g. bin/13) then bin itself
-                        foreach (string subDir in Directory.GetDirectories(binDir).OrderDescending())
-                        {
-                            string fullPath = Path.Combine(subDir, libraryName);
-                            if (NativeLibrary.TryLoad(fullPath, out nint handle))
-                            {
-                                return handle;
-                            }
-                        }
-
-                        string binPath = Path.Combine(binDir, libraryName);
-                        if (NativeLibrary.TryLoad(binPath, out nint binHandle))
-                        {
-                            return binHandle;
-                        }
-                    }
-                }
-            }
-
-            // Also check CUTENSOR_ROOT environment variable
-            string? cudaPath = Environment.GetEnvironmentVariable("CUTENSOR_ROOT");
-            if (cudaPath is not null)
-            {
-                string fullPath = Path.Combine(cudaPath, "lib", libraryName);
-                if (NativeLibrary.TryLoad(fullPath, out nint handle))
-                {
-                    return handle;
-                }
+                return tensorHandle;
             }
 
             // cuDSS standalone install: C:\Program Files\NVIDIA cuDSS\vX.Y\bin\<cuda-major>
@@ -229,7 +196,7 @@ public static class NativeLibraryLoader
         string baseDir = Path.Combine(Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles), product);
         if (Directory.Exists(baseDir))
         {
-            roots.AddRange(Directory.GetDirectories(baseDir, "v*").OrderDescending());
+            roots.AddRange(Directory.GetDirectories(baseDir, "v*").OrderByDescending(Path.GetFileName, VersionedNameComparer.Instance));
         }
 
         if (Environment.GetEnvironmentVariable(rootEnvVar) is { Length: > 0 } envRoot)
@@ -245,7 +212,7 @@ public static class NativeLibraryLoader
                 continue;
             }
 
-            foreach (string dir in Directory.GetDirectories(binDir).OrderDescending().Append(binDir))
+            foreach (string dir in Directory.GetDirectories(binDir).OrderByDescending(Path.GetFileName, VersionedNameComparer.Instance).Append(binDir))
             {
                 if (NativeLibrary.TryLoad(Path.Combine(dir, libraryName), out handle))
                 {
@@ -258,6 +225,51 @@ public static class NativeLibraryLoader
         return false;
     }
 
+    // Orders names such as "v2.8", "v2.10" or "13" by their numeric components, so v2.10 ranks above v2.8
+    // (a plain string comparison gets that wrong).
+    private sealed class VersionedNameComparer : IComparer<string>
+    {
+        public static VersionedNameComparer Instance { get; } = new();
+
+        public int Compare(string? x, string? y)
+        {
+            int[] a = Parse(x);
+            int[] b = Parse(y);
+            for (int i = 0; i < Math.Max(a.Length, b.Length); i++)
+            {
+                int c = (i < a.Length ? a[i] : 0).CompareTo(i < b.Length ? b[i] : 0);
+                if (c != 0)
+                {
+                    return c;
+                }
+            }
+
+            return string.Compare(x, y, StringComparison.OrdinalIgnoreCase);
+        }
+
+        private static int[] Parse(string? name)
+        {
+            if (string.IsNullOrEmpty(name))
+            {
+                return [];
+            }
+
+            string trimmed = name.TrimStart('v', 'V');
+            var parts = new List<int>();
+            foreach (string part in trimmed.Split('.'))
+            {
+                if (!int.TryParse(part, out int value))
+                {
+                    break;
+                }
+
+                parts.Add(value);
+            }
+
+            return [.. parts];
+        }
+    }
+
     private static void TryAddDllDir(string dir)
     {
         if (Directory.Exists(dir) && _addedDirs.Add(dir))
@@ -267,7 +279,11 @@ public static class NativeLibraryLoader
         }
     }
 
-    /// <summary>Releases all loaded library handles.</summary>
+    /// <summary>
+    /// Releases all loaded library handles. <b>Do not call this while any NVMath.Net wrapper is still in use:</b>
+    /// the wrappers cache function pointers into the libraries, which dangle once the libraries are unloaded.
+    /// Intended for process shutdown and tests only.
+    /// </summary>
     public static void UnloadAll()
     {
         lock (_lock)

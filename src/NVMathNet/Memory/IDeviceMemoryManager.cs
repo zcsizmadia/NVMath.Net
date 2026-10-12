@@ -15,7 +15,10 @@ public interface IDeviceMemoryManager
     /// <returns>A device pointer that stays valid until passed to <see cref="Free"/>.</returns>
     nint Allocate(nuint sizeInBytes);
 
-    /// <summary>Releases memory previously returned by <see cref="Allocate"/> on this manager.</summary>
+    /// <summary>
+    /// Releases memory previously returned by <see cref="Allocate"/> on this manager. A pooling manager may hand the
+    /// block out again immediately, so callers must make sure no queued GPU work still uses it (synchronise the stream first).
+    /// </summary>
     /// <param name="pointer">The device pointer to release.</param>
     void Free(nint pointer);
 }

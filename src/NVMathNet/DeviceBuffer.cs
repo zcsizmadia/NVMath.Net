@@ -12,7 +12,7 @@ namespace NVMathNet;
 /// <summary>
 /// A strongly-typed buffer of <typeparamref name="T"/> residing in GPU device memory.
 /// Supports zero-copy async transfers with host-pinned memory.
-/// Implements <see cref="IDisposable"/> â€” dispose to free the device allocation.
+/// Implements <see cref="IDisposable"/> - dispose to free the device allocation.
 /// </summary>
 /// <typeparam name="T">Unmanaged numeric element type (float, double, <see cref="System.Numerics.Complex"/>, etc.).</typeparam>
 public sealed class DeviceBuffer<T> : IDisposable, IAsyncDisposable where T : unmanaged, INumberBase<T>
@@ -85,7 +85,7 @@ public sealed class DeviceBuffer<T> : IDisposable, IAsyncDisposable where T : un
 
     /// <summary>
     /// Copies data from a managed <see cref="ReadOnlySpan{T}"/> to this device buffer.
-    /// Uses pinned memory for a zero-copy hostâ†’device transfer.
+    /// Uses pinned memory for a zero-copy host->device transfer.
     /// </summary>
     public unsafe void CopyFrom(ReadOnlySpan<T> source, CudaStream? stream = null)
     {
@@ -111,7 +111,7 @@ public sealed class DeviceBuffer<T> : IDisposable, IAsyncDisposable where T : un
 
     /// <summary>
     /// Copies data from this device buffer into a managed <see cref="Span{T}"/>.
-    /// Uses pinned memory for a zero-copy deviceâ†’host transfer.
+    /// Uses pinned memory for a zero-copy device->host transfer.
     /// </summary>
     public unsafe void CopyTo(Span<T> destination, CudaStream? stream = null)
     {
