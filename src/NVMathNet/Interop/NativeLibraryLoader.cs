@@ -227,7 +227,7 @@ public static class NativeLibraryLoader
 
     // Orders names such as "v2.8", "v2.10" or "13" by their numeric components, so v2.10 ranks above v2.8
     // (a plain string comparison gets that wrong).
-    private sealed class VersionedNameComparer : IComparer<string>
+    private sealed class VersionedNameComparer : IComparer<string?>
     {
         public static VersionedNameComparer Instance { get; } = new();
 
