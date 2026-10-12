@@ -3,6 +3,7 @@
 [![Build](https://github.com/zcsizmadia/NVMath.Net/actions/workflows/build.yml/badge.svg)](https://github.com/zcsizmadia/NVMath.Net/actions/workflows/build.yml)
 [![NuGet](https://img.shields.io/nuget/v/NVMath.Net.svg)](https://www.nuget.org/packages/NVMath.Net)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](https://github.com/zcsizmadia/NVMath.Net/blob/main/LICENSE)
+[![Target frameworks](https://img.shields.io/badge/.NET-8.0%20%7C%209.0%20%7C%2010.0-512BD4?logo=dotnet)](https://dotnet.microsoft.com/download)
 
 **NVIDIA's CUDA math libraries for .NET.** NVMath.Net is a C# counterpart to
 [nvmath-python](https://github.com/NVIDIA/nvmath-python): idiomatic, `async`-friendly wrappers over **cuFFT, cuBLASLt,
