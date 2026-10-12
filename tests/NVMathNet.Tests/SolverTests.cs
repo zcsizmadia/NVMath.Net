@@ -318,4 +318,81 @@ public sealed class SolverTests
         await Assert.That(Math.Abs(r[5] - 1)).IsLessThan(1e-9);
         await Assert.That(Math.Abs(r[7] - 2)).IsLessThan(1e-9);
     }
+
+    // ── Batched LU ───────────────────────────────────────────────────────────
+
+    [Test]
+    public async Task LuBatched_FactorAndSolve_SolveEveryMatrix()
+    {
+        const int N = 4, Batch = 3;
+        double[] hA = new double[N * N * Batch];
+        double[] hB = new double[N * Batch];
+        for (int m = 0; m < Batch; m++)
+        {
+            for (int c = 0; c < N; c++)
+            {
+                for (int r = 0; r < N; r++)
+                {
+                    hA[m * N * N + r + N * c] = r == c ? 5 + m : 0.3 * ((r + 2 * c + m) % 5);
+                }
+            }
+
+            for (int r = 0; r < N; r++)
+            {
+                hB[m * N + r] = (m + 1) * (r + 1);
+            }
+        }
+
+        foreach (bool transpose in new[] { false, true })
+        {
+            using var dA = new DeviceBuffer<double>(hA.Length);
+            using var dB = new DeviceBuffer<double>(hB.Length);
+            using var dPiv = new DeviceBuffer<int>(N * Batch);
+            dA.CopyFrom(hA.AsSpan());
+            dB.CopyFrom(hB.AsSpan());
+
+            int[] infos = await DenseSolver.LuFactorBatchedAsync(dA, dPiv, N, Batch);
+            await Assert.That(infos.All(i => i == 0)).IsTrue();
+            await DenseSolver.LuSolveBatchedAsync(dA, dPiv, dB, N, 1, Batch, transpose);
+
+            double[] x = dB.ToArray();
+            for (int m = 0; m < Batch; m++)
+            {
+                for (int r = 0; r < N; r++)
+                {
+                    double sum = 0;
+                    for (int c = 0; c < N; c++)
+                    {
+                        double a = transpose ? hA[m * N * N + c + N * r] : hA[m * N * N + r + N * c];
+                        sum += a * x[m * N + c];
+                    }
+
+                    await Assert.That(Math.Abs(sum - hB[m * N + r])).IsLessThan(1e-9);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public async Task LuBatched_SingularMatrix_ReportedPerMatrix()
+    {
+        // Matrix 0 is regular, matrix 1 is singular ([[1,2],[2,4]]).
+        double[] hA = [2, 0, 0, 3, 1, 2, 2, 4];
+        using var dA = new DeviceBuffer<double>(hA.Length);
+        using var dPiv = new DeviceBuffer<int>(4);
+        dA.CopyFrom(hA.AsSpan());
+
+        int[] infos = await DenseSolver.LuFactorBatchedAsync(dA, dPiv, 2, 2);
+
+        await Assert.That(infos[0]).IsEqualTo(0);
+        await Assert.That(infos[1]).IsGreaterThan(0);
+    }
+
+    [Test]
+    public async Task LuBatched_TooSmallBuffer_Throws()
+    {
+        using var dA = new DeviceBuffer<double>(4);
+        using var dPiv = new DeviceBuffer<int>(4);
+        await Assert.That(async () => await DenseSolver.LuFactorBatchedAsync(dA, dPiv, 2, 2)).Throws<ArgumentException>();
+    }
 }
