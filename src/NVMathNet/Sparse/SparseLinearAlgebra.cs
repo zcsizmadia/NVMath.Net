@@ -55,8 +55,10 @@ public static partial class SparseLinearAlgebra
 
     private static unsafe void SpMVCore<T>(
         CsrMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
-        float alpha, float beta, bool transpose, CudaStream s) where T : unmanaged, INumberBase<T>
+        float alphaF, float betaF, bool transpose, CudaStream s) where T : unmanaged, INumberBase<T>
     {
+        // cuSPARSE reads alpha/beta as the compute type, so pass them as T.
+        T alpha = T.CreateChecked(alphaF), beta = T.CreateChecked(betaF);
         var cudaType = CudaRuntime.GetCudaDataType<T>();
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
         var handle = CreateHandle(s);
@@ -145,8 +147,9 @@ public static partial class SparseLinearAlgebra
 
     private static unsafe void SpMMCore<T>(
         CsrMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c,
-        long n, float alpha, float beta, bool transpose, CudaStream s) where T : unmanaged, INumberBase<T>
+        long n, float alphaF, float betaF, bool transpose, CudaStream s) where T : unmanaged, INumberBase<T>
     {
+        T alpha = T.CreateChecked(alphaF), beta = T.CreateChecked(betaF);
         var cudaType = CudaRuntime.GetCudaDataType<T>();
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
         var handle = CreateHandle(s);

@@ -347,4 +347,36 @@ public sealed class SparseTests
             }
         }
     }
+
+    [Test]
+    public async Task SpMV_Double_UsesDoubleScalars()
+    {
+        // y = 2 * A x + 3 * y with A = diag(5): y = 10 x + 3 y
+        const int N = 64;
+        double[] values = [.. Enumerable.Repeat(5.0, N)];
+        int[] colIdx = [.. Enumerable.Range(0, N)];
+        int[] rowPtr = [.. Enumerable.Range(0, N + 1)];
+        var dVal = new DeviceBuffer<double>(N);
+        var dCol = new DeviceBuffer<int>(N);
+        var dRow = new DeviceBuffer<int>(N + 1);
+        dVal.CopyFrom(values.AsSpan());
+        dCol.CopyFrom(colIdx.AsSpan());
+        dRow.CopyFrom(rowPtr.AsSpan());
+        using var csr = new CsrMatrix<double>(N, N, dRow, dCol, dVal);
+
+        double[] hX = [.. Enumerable.Range(1, N).Select(i => (double)i)];
+        double[] hY = [.. Enumerable.Repeat(1.0, N)];
+        using var dX = new DeviceBuffer<double>(N);
+        using var dY = new DeviceBuffer<double>(N);
+        dX.CopyFrom(hX.AsSpan());
+        dY.CopyFrom(hY.AsSpan());
+
+        await SparseLinearAlgebra.SpMVAsync(csr, dX, dY, alpha: 2.0f, beta: 3.0f);
+
+        double[] r = dY.ToArray();
+        for (int i = 0; i < N; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - (10.0 * hX[i] + 3.0))).IsLessThan(1e-9);
+        }
+    }
 }
