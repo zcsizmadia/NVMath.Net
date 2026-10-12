@@ -168,4 +168,154 @@ public sealed class SolverTests
         await Assert.That(Math.Abs(eigenvalues[1] - 3.0)).IsLessThan(1e-10);
         await Assert.That(Math.Abs(eigenvalues[2] - 5.0)).IsLessThan(1e-10);
     }
+
+    // ── LU / QR / least squares / batched Cholesky ───────────────────────────
+
+    [Test]
+    public async Task LuFactor_LuSolve_SolvesAndTransposeSolves()
+    {
+        const int N = 3;
+        // A = [[2,1,1],[4,3,3],[8,7,9]] column-major
+        double[] hA = [2, 4, 8, 1, 3, 7, 1, 3, 9];
+        double[] hB = [1, 1, 1];
+
+        foreach (bool transpose in new[] { false, true })
+        {
+            using var dA = new DeviceBuffer<double>(N * N);
+            using var dB = new DeviceBuffer<double>(N);
+            using var dPiv = new DeviceBuffer<int>(N);
+            dA.CopyFrom(hA.AsSpan());
+            dB.CopyFrom(hB.AsSpan());
+
+            int info = await DenseSolver.LuFactorAsync(dA, dPiv, N, N);
+            await Assert.That(info).IsEqualTo(0);
+            await DenseSolver.LuSolveAsync(dA, dPiv, dB, N, 1, transpose);
+
+            double[] x = dB.ToArray();
+            for (int r = 0; r < N; r++)
+            {
+                double sum = 0;
+                for (int c = 0; c < N; c++)
+                {
+                    sum += (transpose ? hA[c + N * r] : hA[r + N * c]) * x[c];
+                }
+
+                await Assert.That(Math.Abs(sum - hB[r])).IsLessThan(1e-9);
+            }
+        }
+    }
+
+    [Test]
+    public async Task LuFactor_SingularMatrix_ReportsPositiveInfo()
+    {
+        double[] hA = [1, 2, 2, 4]; // [[1,2],[2,4]]
+        using var dA = new DeviceBuffer<double>(4);
+        using var dPiv = new DeviceBuffer<int>(2);
+        dA.CopyFrom(hA.AsSpan());
+
+        int info = await DenseSolver.LuFactorAsync(dA, dPiv, 2, 2);
+
+        await Assert.That(info).IsGreaterThan(0);
+    }
+
+    [Test]
+    public async Task Qr_FormQ_ReconstructsMatrixAndIsOrthonormal()
+    {
+        const int M = 4, N = 3;
+        double[] hA = [1, 2, 3, 4, 2, 1, 0, 1, 0, 3, 1, 2]; // column-major 4x3
+        using var dA = new DeviceBuffer<double>(M * N);
+        using var dTau = new DeviceBuffer<double>(N);
+        dA.CopyFrom(hA.AsSpan());
+
+        await DenseSolver.QrAsync(dA, dTau, M, N);
+        double[] fact = dA.ToArray(); // upper triangle = R
+        await DenseSolver.QrFormQAsync(dA, dTau, M, N);
+        double[] q = dA.ToArray();
+
+        // Q^T Q = I
+        for (int i = 0; i < N; i++)
+        {
+            for (int j = 0; j < N; j++)
+            {
+                double dot = 0;
+                for (int r = 0; r < M; r++)
+                {
+                    dot += q[r + M * i] * q[r + M * j];
+                }
+
+                await Assert.That(Math.Abs(dot - (i == j ? 1.0 : 0.0))).IsLessThan(1e-9);
+            }
+        }
+
+        // Q R = A
+        for (int r = 0; r < M; r++)
+        {
+            for (int c = 0; c < N; c++)
+            {
+                double sum = 0;
+                for (int k = 0; k <= c; k++)
+                {
+                    sum += q[r + M * k] * fact[k + M * c];
+                }
+
+                await Assert.That(Math.Abs(sum - hA[r + M * c])).IsLessThan(1e-9);
+            }
+        }
+    }
+
+    [Test]
+    public async Task LeastSquares_LineFit_MatchesNormalEquations()
+    {
+        const int M = 5, N = 2;
+        double[] hA = [1, 1, 1, 1, 1, 0, 1, 2, 3, 4]; // columns: ones, x
+        double[] hB = [1.1, 2.9, 5.2, 6.8, 9.1];
+
+        using var dA = new DeviceBuffer<double>(M * N);
+        using var dB = new DeviceBuffer<double>(M);
+        dA.CopyFrom(hA.AsSpan());
+        dB.CopyFrom(hB.AsSpan());
+
+        await DenseSolver.LeastSquaresAsync(dA, dB, M, N);
+        double[] sol = dB.ToArray();
+
+        // Normal equations (A^T A) x = A^T b for the 2x2 case
+        double s0 = M, s1 = 0, s2 = 0, t0 = 0, t1 = 0;
+        for (int i = 0; i < M; i++)
+        {
+            s1 += hA[M + i];
+            s2 += hA[M + i] * hA[M + i];
+            t0 += hB[i];
+            t1 += hA[M + i] * hB[i];
+        }
+
+        double det = s0 * s2 - s1 * s1;
+        double x0 = (t0 * s2 - s1 * t1) / det;
+        double x1 = (s0 * t1 - s1 * t0) / det;
+
+        await Assert.That(Math.Abs(sol[0] - x0)).IsLessThan(1e-9);
+        await Assert.That(Math.Abs(sol[1] - x1)).IsLessThan(1e-9);
+    }
+
+    [Test]
+    public async Task CholeskyBatched_FactorsEachMatrixAndReportsNonPositiveDefinite()
+    {
+        // Three 2x2 column-major matrices: SPD, SPD, and indefinite.
+        double[] h = [4, 2, 2, 3, 9, 3, 3, 5, 1, 2, 2, 1];
+        using var dA = new DeviceBuffer<double>(h.Length);
+        dA.CopyFrom(h.AsSpan());
+
+        int[] infos = await DenseSolver.CholeskyBatchedAsync(dA, n: 2, batchCount: 3);
+        double[] r = dA.ToArray();
+
+        await Assert.That(infos[0]).IsEqualTo(0);
+        await Assert.That(infos[1]).IsEqualTo(0);
+        await Assert.That(infos[2]).IsGreaterThan(0);
+        // Lower factors: [[2,0],[1,sqrt2]] and [[3,0],[1,2]]
+        await Assert.That(Math.Abs(r[0] - 2)).IsLessThan(1e-9);
+        await Assert.That(Math.Abs(r[1] - 1)).IsLessThan(1e-9);
+        await Assert.That(Math.Abs(r[3] - Math.Sqrt(2))).IsLessThan(1e-9);
+        await Assert.That(Math.Abs(r[4] - 3)).IsLessThan(1e-9);
+        await Assert.That(Math.Abs(r[5] - 1)).IsLessThan(1e-9);
+        await Assert.That(Math.Abs(r[7] - 2)).IsLessThan(1e-9);
+    }
 }

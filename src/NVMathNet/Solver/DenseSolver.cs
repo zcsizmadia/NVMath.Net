@@ -9,7 +9,7 @@ namespace NVMathNet.Solver;
 /// Stateless helpers for cuSOLVER dense operations: LU, Cholesky, SVD, eigenvalue
 /// decomposition, and QR factorisation. All matrices use column-major layout.
 /// </summary>
-public static class DenseSolver
+public static partial class DenseSolver
 {
     // ── LU: Solve A*X = B ────────────────────────────────────────────────────
 
