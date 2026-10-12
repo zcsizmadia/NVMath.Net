@@ -23,12 +23,12 @@ await matmul.ExecuteAsync<float>(a, b, c, d, alpha: 1.0, beta: 0.0);   // D = α
 | Area | Highlights |
 |---|---|
 | **FFT** | C2C / R2C / C2R, N-D and batched transforms, leading- or trailing-axis layouts, output normalization |
-| **Matrix multiplication** | cuBLASLt `Matmul` with epilogs, bias, batching, FP8 scaling, autotuning; GEMM, TRSM, SYMM, DGMM |
-| **Sparse** | CSR / COO / BSR / CSC, SpMV, SpMM, SpSV, SpSM, SDDMM, SpGEMM, transpose; cuDSS direct solver |
+| **Matrix multiplication** | cuBLASLt `Matmul` with epilogs, bias, batching, FP8 scaling, autotuning with a plan cache, conjugate transpose, complex matmul; GEMM, TRSM, SYMM, DGMM |
+| **Sparse** | CSR / COO / BSR / CSC (real and complex), SpMV, SpMM, SpSV, SpSM, SDDMM, SpGEMM, transpose; cuDSS direct solver |
 | **Tensors** | Contractions, element-wise unary/binary/trinary operations, permutation, reduction |
-| **Dense solvers** | LU, QR, least squares, Cholesky, SVD, eigenvalues — single, batched and complex variants |
+| **Dense solvers** | LU, QR, least squares, Cholesky, SVD, eigenvalues — single, batched and complex (double) variants including SVD |
 | **Random numbers** | Pseudo- and quasi-random generators, uniform / normal / log-normal / Poisson, skip-ahead |
-| **Infrastructure** | `DeviceBuffer<T>`, streams, events, multi-GPU helpers, pluggable device memory managers |
+| **Infrastructure** | `DeviceBuffer<T>`, streams, events, multi-GPU helpers, pluggable device memory managers, logging hook |
 
 ## Where to go next
 

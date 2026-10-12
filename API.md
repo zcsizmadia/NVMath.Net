@@ -24,10 +24,10 @@ NVMath.Net covers the host (single-process) API of [nvmath-python](https://githu
 | nvmath-python | NVMath.Net | Status |
 |---|---|---|
 | `nvmath.fft` — `fft`, `ifft`, `rfft`, `irfft`, `FFT` | `Fft` (plan-based and static helpers) | Covered: C2C/R2C/C2R, N-D, batched, axes, normalization. **Not covered:** prolog/epilog callbacks |
-| `nvmath.linalg.advanced.Matmul` | `Matmul` | Covered: epilogs, bias, aux outputs, batching, FP8 scale pointers, autotune. **Not covered:** block-scaled MXFP8/NVFP4, plan cache |
+| `nvmath.linalg.advanced.Matmul` | `Matmul` | Covered: epilogs, bias, aux outputs, batching, FP8 scale pointers, autotune, plan cache, conjugate transpose, complex matmul. **Not covered:** block-scaled MXFP8/NVFP4 (needs Blackwell hardware to verify) |
 | `nvmath.linalg` BLAS-style routines | `Gemm`, `TriangularSolve`, `SymmetricMultiply`, `DiagonalMultiply` | Covered (typed per precision) |
 | `nvmath.sparse` multiplication | `SparseLinearAlgebra` | Covered for CSR/COO/BSR/CSC where cuSPARSE supports it |
-| `nvmath.sparse.advanced.DirectSolver` | `SparseDirectSolver<T>` (cuDSS) | Covered for float/double; no batched or multi-GPU solves |
+| `nvmath.sparse.advanced.DirectSolver` | `SparseDirectSolver<T>` (cuDSS) | Covered for float/double/complex; no batched or multi-GPU solves |
 | `nvmath.tensor` contraction and element-wise operations | `TensorContraction`, `ElementwiseBinary`, `ElementwiseTrinary`, `TensorPermutation`, `TensorReduction` | Covered |
 | `nvmath.bindings` | `NVMathNet.Interop.*Native` | Raw bindings are public |
 

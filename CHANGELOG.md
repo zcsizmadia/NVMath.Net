@@ -31,26 +31,35 @@ First stable release. The public API is now considered stable; breaking changes 
   (`None`, `Backward`, `Forward`, `Orthonormal`).
 - **Matmul (cuBLASLt):** strided-batch matmul, `SetScalePointers` (FP8 A/B/C/D scales and amax), `SetBias`,
   `SetEpilogAux`, `MatmulOptions.FastAccum`, additional epilog values, algorithm candidates with `AlgorithmCount`,
-  `SelectAlgorithm` and `Autotune`/`AutotuneAsync`.
+  `SelectAlgorithm` and `Autotune`/`AutotuneAsync`, `MatmulPlanCache` (repeated plans skip the heuristic and reuse
+  autotuned choices), conjugate transpose of A/B (`ConjugateTransposeA/B`), complex element/scale types
+  (`Complex64`, `Complex128`) and complex-scalar `Execute` overloads.
 - **Sparse (cuSPARSE):** SpSV, SpSM, SDDMM, SpGEMM, `CsrMatrix.Transpose()`, `CscMatrix<T>` with `CsrMatrix.ToCsc()`,
-  SpMV/SpMM for COO, BSR and CSC, SpSV/SpSM for COO, empty SpGEMM products.
+  SpMV/SpMM for COO, BSR and CSC, SpSV/SpSM for COO, empty SpGEMM products, complex (double) values for all
+  operations cuSPARSE supports them for, and `T`-typed scalar overloads of SpMV/SpMM (complex `alpha`/`beta`).
 - **Sparse direct solver (cuDSS):** `SparseDirectSolver<T>` with analyse / factorise / refactorise / solve, general,
-  symmetric and SPD structures, multiple right-hand sides, reordering and iterative-refinement options.
+  symmetric, Hermitian and positive-definite structures, `float`/`double`/`Complex` values, multiple right-hand sides,
+  reordering and iterative-refinement options.
 - **Tensors (cuTENSOR 2):** `TensorPermutation`, `ElementwiseBinary`, `TensorReduction` on a shared `TensorOperation`
   base; all unary operators from the cuTENSOR header.
 - **Dense solvers (cuSOLVER):** `LuFactorAsync`/`LuSolveAsync`, `QrAsync`/`QrFormQAsync`, `LeastSquaresAsync`,
-  batched Cholesky, batched LU, batched Jacobi SVD, and complex (double) LU, QR, least squares, Cholesky and
-  `HermitianEigAsync`.
+  batched Cholesky, batched LU, batched Jacobi SVD, and complex (double) LU, QR, least squares, Cholesky, SVD,
+  `HermitianEigAsync` and the batched Cholesky / LU / Jacobi SVD routines.
 - **Random numbers (cuRAND):** `FillUInt32`, `FillUInt64`, `FillPoisson`, `SetOffset` (skip-ahead),
   `SetQuasiRandomDimensions`, `RngType`.
 - **Memory:** `IDeviceMemoryManager`, `DeviceMemory.Default`, `CachingMemoryManager`, and a `DeviceBuffer<T>` constructor
   taking a manager. Internal workspaces (cuFFT, cuBLASLt, cuTENSOR, cuSPARSE) use the same manager.
+- **Logging:** a dependency-free hook, `NVMathLog` (`Handler`, `MinimumLevel`), that reports failed native calls,
+  library loads, autotune results and plan details; bridge it to `ILogger` or any logger.
 - **Native loading:** the default cuDSS install folder and `CUDSS_ROOT` are probed on Windows, like cuTENSOR.
 - **Documentation:** a DocFX website (guides, module references and generated API reference) published to GitHub
   Pages, a rewritten README and `API.md`, and a new `DirectSolverSample`.
 
 ### Fixed
 
+- **Complex scalars and alignment:** `cuDoubleComplex` needs 16-byte alignment but `System.Numerics.Complex` only
+  guarantees 8, so passing a complex scalar by address could access-violate inside cuSPARSE or cuBLAS depending on stack
+  placement. Host scalars of generic or complex type are now stored in 16-byte aligned memory.
 - **cuBLASLt:** the transpose, epilog and implementation-mask attribute IDs were wrong (transposition was written to
   the compute-type attribute), and `batchCount` was accepted but never applied.
 - **Matmul / SpMV / SpMM / cuTENSOR scalars:** `float` scalars were passed regardless of the operation's precision,
@@ -65,9 +74,13 @@ First stable release. The public API is now considered stable; breaking changes 
 
 ### Not included (tracked after 1.0)
 
-Block-scaled MXFP8/NVFP4 matmul, Matmul plan cache and matrix qualifiers, FFT prolog/epilog callbacks, complex SVD
-and complex batched solvers, further cuRAND distributions, and an optional logging hook. See the issues labelled
-[`post-1.0`](https://github.com/zcsizmadia/NVMath.Net/labels/post-1.0).
+Block-scaled MXFP8/NVFP4 matmul (needs Blackwell hardware to verify) and FFT prolog/epilog callbacks (needs
+NVRTC/LTO-IR). See the issues labelled [`post-1.0`](https://github.com/zcsizmadia/NVMath.Net/labels/post-1.0).
+
+Some things are intentionally absent because the NVIDIA libraries do not offer them: binomial and histogram discrete
+distributions in the cuRAND host API (the entry points are not exported), triangular solves for BSR matrices in
+cuSPARSE, SpGEMM/SDDMM for COO and BSR, and a structured-matrix matmul in cuBLASLt (use `TriangularSolve` and
+`SymmetricMultiply`).
 
 ## [0.9.0]
 
