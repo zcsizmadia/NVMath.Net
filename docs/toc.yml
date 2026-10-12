@@ -1,0 +1,10 @@
+- name: Home
+  href: index.md
+- name: Guides
+  href: articles/
+- name: Module reference
+  href: api/
+- name: API reference
+  href: reference/
+- name: GitHub
+  href: https://github.com/zcsizmadia/NVMath.Net
