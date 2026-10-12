@@ -123,3 +123,15 @@ Diagonal matrix multiply using cuBLAS DGMM: `C = diag(x) * A` (left) or `C = A *
 Parameters: `leftSide`, `stream`, `ct`.
 
 Alpha and beta are `double` and are encoded according to `MatmulOptions.ScaleType` (`Float32`, `Float64`, `Float16`, `BFloat16` or `Int32`).
+
+### Conjugate transpose, complex matmul and the plan cache
+
+| Member | Description |
+|---|---|
+| `MatmulOptions.ConjugateTransposeA` / `ConjugateTransposeB` | Use `Aᴴ` / `Bᴴ` (implies a transpose; takes precedence over `TransposeA/B`). |
+| `MatrixDataType.Complex64` / `Complex128` | Complex element and scale types. Use `Compute64F` with `Complex128` (`DeviceBuffer<System.Numerics.Complex>`). |
+| `Execute(..., Complex alpha, Complex beta)`, `ExecuteAsync<T>(..., Complex alpha, Complex beta)` | Complex scalars; for real scale types only the real part is used. |
+| `MatmulPlanCache.Enabled` | Caches planning results process-wide (default `true`). A repeated `Matmul` with the same shape, types, options, epilog configuration and preferences on the same device skips the cuBLASLt heuristic and reuses the algorithm chosen by `Autotune`. |
+| `MatmulPlanCache.Count`, `Hits`, `Misses`, `Clear()` | Observability and reset. |
+
+Symmetric and triangular operands are handled by the dedicated `SymmetricMultiply` and `TriangularSolve` classes rather than by matmul qualifiers, because cuBLASLt has no structured-matrix matmul.
