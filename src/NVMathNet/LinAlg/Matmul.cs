@@ -41,6 +41,11 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     // ── Workspace ─────────────────────────────────────────────────────────────
 
     private nint   _workspacePtr;
+    private readonly int _deviceId;
+    private MatrixDataType? _biasType;
+    private long _biasStride;
+    private MatrixDataType? _auxType;
+    private long _auxStride;
     private nint _biasPointer;
     private nint _auxPointer;
     private long _auxLd;
@@ -93,14 +98,28 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         MatmulOptions? options = null,
         CudaStream? stream = null)
     {
+        ArgumentOutOfRangeException.ThrowIfLessThan(m, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(n, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(k, 1);
+        ArgumentOutOfRangeException.ThrowIfLessThan(batchCount, 1);
+
         _m = m; _n = n; _k = k;
         _batchCount = batchCount;
-        _options = options ?? new MatmulOptions();
+        _options = options?.Clone() ?? new MatmulOptions();
+        _deviceId = CudaRuntime.GetDevice();
         _ownedStream = stream ?? new CudaStream();
         _streamOwned = stream is null;
 
-        _ltHandle = CuBlasNative.LtCreate();
-        CreateDescriptors();
+        try
+        {
+            _ltHandle = CuBlasNative.LtCreate();
+            CreateDescriptors();
+        }
+        catch
+        {
+            DisposeCore(); // release whatever was created before the failure
+            throw;
+        }
     }
 
     private unsafe void CreateDescriptors()
@@ -158,8 +177,8 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
         if (_options.FastAccum)
         {
-            int fast = 1;
-            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescFastAccum, &fast, sizeof(int));
+            sbyte fast = 1; // CUBLASLT_MATMUL_DESC_FAST_ACCUM is an int8_t
+            CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescFastAccum, &fast, sizeof(sbyte));
         }
 
         if (_batchCount > 1)
@@ -220,6 +239,8 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         ObjectDisposedException.ThrowIf(_disposed, this);
         SetPointerAttr(DescBiasPointer, bias);
         _biasPointer = bias;
+        _biasType = biasType;
+        _biasStride = batchStride;
         if (biasType is { } t)
         {
             int dt = (int)t;
@@ -250,6 +271,8 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         SetPointerAttr(DescEpilogueAuxPointer, aux);
         _auxPointer = aux;
         _auxLd = ld;
+        _auxType = auxType;
+        _auxStride = batchStride;
         CuBlasNative.MatmulDescSetAttribute(_matmulDesc, DescEpilogueAuxLd, &ld, sizeof(long));
         if (auxType is { } t)
         {
@@ -309,8 +332,19 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         DoPlan(preferences);
     }
 
+    // cuBLASLt handles are bound to the device that was current at creation, but planning may run on a thread-pool
+    // thread whose current device differs, so every entry point re-selects the device first.
+    private void EnsureDevice()
+    {
+        if (CudaRuntime.GetDevice() != _deviceId)
+        {
+            CudaRuntime.SetDevice(_deviceId);
+        }
+    }
+
     private unsafe void DoPlan(MatmulPlanPreferences? prefs)
     {
+        EnsureDevice();
         // Apply optional workspace override from preferences
         if (prefs?.MaxWorkspaceBytes is nuint wsOverride)
         {
@@ -332,6 +366,11 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         }
 
         int algoCount = prefs?.RequestedAlgoCount ?? 1;
+        if (algoCount < 1)
+        {
+            throw new ArgumentOutOfRangeException(nameof(prefs), "RequestedAlgoCount must be at least 1.");
+        }
+
         int count;
         int cachedSelection = 0;
         _cacheKey = MatmulPlanCache.Enabled ? BuildCacheKey(prefs, algoCount) : null;
@@ -394,11 +433,11 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         var o = _options;
         string pointers = $"{(_biasPointer != 0 ? 1 : 0)}{(_biasPointer % 16 == 0 ? 1 : 0)}{(_auxPointer != 0 ? 1 : 0)}{(_auxPointer % 16 == 0 ? 1 : 0)}{(_hasScalePointers ? 1 : 0)}";
         return string.Join('|',
-            CudaRuntime.GetDevice(), _m, _n, _k, _batchCount,
+            _deviceId, _m, _n, _k, _batchCount,
             (int)o.ComputeType, (int)o.ScaleType, (int)o.TypeA, (int)o.TypeB, (int)o.TypeC, (int)o.TypeD,
             (int)o.Epilog, o.TransposeA, o.TransposeB, o.ConjugateTransposeA, o.ConjugateTransposeB, o.FastAccum,
             o.MaxWorkspaceBytes, prefs?.MaxWorkspaceBytes?.ToString() ?? "-", prefs?.NumericalImplMask ?? 0, requested,
-            pointers, _auxLd);
+            pointers, _auxLd, _biasType?.ToString() ?? "-", _biasStride, _auxType?.ToString() ?? "-", _auxStride);
     }
 
     // Workspace size sits at offset 64 of cublasLtMatmulHeuristicResult_t (after the 64-byte algo).
@@ -430,7 +469,9 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
     // ── Autotune ──────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Times every candidate algorithm on the given operands and selects the fastest.
+    /// Times every candidate algorithm on the given operands and selects the fastest. Only the candidates found while
+    /// planning are timed: plan with <see cref="MatmulPlanPreferences.RequestedAlgoCount"/> greater than 1, otherwise
+    /// there is a single candidate and nothing to choose between.
     /// <b>D is overwritten</b> by the trial runs (and so is C when it aliases D), so run this on
     /// scratch data or with <c>beta = 0</c> before the real computation.
     /// </summary>
@@ -453,6 +494,7 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         }
 
         ArgumentOutOfRangeException.ThrowIfLessThan(iterations, 1);
+        EnsureDevice();
 
         float[] times = new float[_algoCount];
         using var start = new CudaEvent(disableTiming: false);
@@ -523,7 +565,8 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
     /// <summary>
     /// Asynchronously executes the matrix multiplication and returns a
-    /// <see cref="Task"/> that completes when the GPU kernel finishes.
+    /// <see cref="Task"/> that completes once the work has been submitted, or once it has finished when
+    /// <see cref="MatmulOptions.Blocking"/> is set.
     /// </summary>
     public async Task ExecuteAsync(
         nint pA, nint pB, nint pC, nint pD,
@@ -590,6 +633,8 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
         nint pA, nint pB, nint pC, nint pD, Complex alpha, Complex beta,
         byte[] algo, nuint workspaceSize)
     {
+        EnsureDevice();
+
         // cuBLASLt reads alpha/beta with the scale type, so encode them accordingly. Complex scale types
         // (cuDoubleComplex) must be 16-byte aligned.
         Span<byte> aStore = stackalloc byte[AlignedScalar.StorageSize], bStore = stackalloc byte[AlignedScalar.StorageSize];
@@ -695,50 +740,74 @@ public sealed class Matmul : IAsyncDisposable, IDisposable
 
         _disposed = true;
 
+        // Work may still be queued on the stream (Blocking = false): wait for it before the workspace is returned
+        // to its memory manager, which may hand the block to someone else immediately.
+        try
+        {
+            _ownedStream.Synchronize();
+        }
+        catch (Exception)
+        {
+            // The context may already be broken; continue releasing resources.
+        }
+
+        // One failing destroy call must not leak everything that comes after it.
+        static void Try(Action destroy)
+        {
+            try
+            {
+                destroy();
+            }
+            catch (Exception)
+            {
+                // Already reported through NVMathLog by the native Check helper.
+            }
+        }
+
         if (_preference != default)
         {
-            CuBlasNative.MatmulPreferenceDestroy(_preference);
+            Try(() => CuBlasNative.MatmulPreferenceDestroy(_preference));
         }
 
-        if (_layoutD    != default)
+        if (_layoutD != default)
         {
-            CuBlasNative.MatrixLayoutDestroy(_layoutD);
+            Try(() => CuBlasNative.MatrixLayoutDestroy(_layoutD));
         }
 
-        if (_layoutC    != default)
+        if (_layoutC != default)
         {
-            CuBlasNative.MatrixLayoutDestroy(_layoutC);
+            Try(() => CuBlasNative.MatrixLayoutDestroy(_layoutC));
         }
 
-        if (_layoutB    != default)
+        if (_layoutB != default)
         {
-            CuBlasNative.MatrixLayoutDestroy(_layoutB);
+            Try(() => CuBlasNative.MatrixLayoutDestroy(_layoutB));
         }
 
-        if (_layoutA    != default)
+        if (_layoutA != default)
         {
-            CuBlasNative.MatrixLayoutDestroy(_layoutA);
+            Try(() => CuBlasNative.MatrixLayoutDestroy(_layoutA));
         }
 
         if (_matmulDesc != default)
         {
-            CuBlasNative.MatmulDescDestroy(_matmulDesc);
+            Try(() => CuBlasNative.MatmulDescDestroy(_matmulDesc));
         }
 
-        if (_ltHandle   != default)
+        if (_ltHandle != default)
         {
-            CuBlasNative.LtDestroy(_ltHandle);
+            Try(() => CuBlasNative.LtDestroy(_ltHandle));
         }
 
         if (_workspacePtr != 0)
         {
-            _workspace.Dispose();
+            Try(() => _workspace.Dispose());
             _workspacePtr = 0;
         }
 
         if (_streamOwned)
         {
-            _ownedStream.Dispose();
+            Try(() => _ownedStream.Dispose());
         }
     }
 }

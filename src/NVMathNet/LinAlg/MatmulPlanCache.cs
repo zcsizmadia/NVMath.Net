@@ -22,6 +22,12 @@ public static class MatmulPlanCache
     /// <summary>Whether planning results are cached. Default: <c>true</c>. Changing it does not clear the cache.</summary>
     public static bool Enabled { get; set; } = true;
 
+    /// <summary>
+    /// Maximum number of cached results (default 1024). When the limit is reached the cache is cleared, so programs
+    /// with unboundedly many distinct shapes do not grow memory without limit.
+    /// </summary>
+    public static int MaxEntries { get; set; } = 1024;
+
     /// <summary>Number of distinct planning results currently cached.</summary>
     public static int Count => _entries.Count;
 
@@ -51,14 +57,25 @@ public static class MatmulPlanCache
         return false;
     }
 
-    internal static void Store(string key, byte[] algorithms, int count) =>
-        _entries[key] = new Entry(algorithms, count, 0);
+    internal static void Store(string key, byte[] algorithms, int count)
+    {
+        if (_entries.Count >= Math.Max(MaxEntries, 1))
+        {
+            _entries.Clear();
+        }
+
+        // Two threads can miss on the same key; the first result wins so an autotuned choice is never overwritten.
+        _entries.AddOrUpdate(key, new Entry(algorithms, count, 0), (_, existing) => existing);
+    }
 
     internal static void UpdateSelected(string key, int selected)
     {
-        if (_entries.TryGetValue(key, out var existing))
+        while (_entries.TryGetValue(key, out var existing))
         {
-            _entries[key] = existing with { Selected = selected };
+            if (_entries.TryUpdate(key, existing with { Selected = selected }, existing))
+            {
+                return;
+            }
         }
     }
 }
