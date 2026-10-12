@@ -87,6 +87,14 @@ First stable release. The public API is now considered stable; breaking changes 
   tensor scalars no longer over-read the stack; plans synchronise their stream before releasing workspace; constructors
   and helpers no longer leak streams or output buffers on failure.
 
+- **Review fixes (sparse / dense solvers / cuRAND):** sparse constructors and operations validate buffer sizes
+  (an undersized dense operand used to corrupt memory); `Transpose()`/`ToCsc()` work for matrices with no stored
+  entries (`CscMatrix` gained an optional `nnz`); workspaces are released only after the stream has finished with them;
+  `SparseDirectSolver` no longer solves with stale factors after a failed `Refactorize` or after `SetValues`; dense
+  solvers validate dimensions and buffer sizes before calling cuSOLVER (a bad size used to leave the CUDA context in a
+  sticky error state) and the real `SvdAsync` rejects `m < n` with a clear message; `CudaRandom` no longer leaks its
+  generator when configuration fails and `FillPoisson` rejects non-finite or oversized lambda.
+
 ### Not included (tracked after 1.0)
 
 Block-scaled MXFP8/NVFP4 matmul (needs Blackwell hardware to verify) and FFT prolog/epilog callbacks (needs

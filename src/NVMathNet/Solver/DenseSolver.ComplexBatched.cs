@@ -51,6 +51,10 @@ public static partial class DenseSolver
         DeviceBuffer<Complex> a, DeviceBuffer<double> s, DeviceBuffer<Complex> u, DeviceBuffer<Complex> vh,
         int m, int n, CudaStream stream)
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(s.Length, Math.Min(m, n), nameof(s));
+        RequireTall(m, n);
+        Need(u.Length, (long)m * m, nameof(u)); Need(vh.Length, (long)n * n, nameof(vh));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, stream.Handle);
         try
@@ -97,6 +101,8 @@ public static partial class DenseSolver
 
     private static unsafe int[] CholeskyBatchedComplexCore(DeviceBuffer<Complex> a, int n, int batchCount, bool upper, CudaStream s)
     {
+        Dim(n, nameof(n)); Dim(batchCount, nameof(batchCount));
+        Need(a.Length, (long)n * n * batchCount, nameof(a));
         var uplo = upper ? CuBlasFillMode.Upper : CuBlasFillMode.Lower;
         using var ptrs = MakePointerArray(a, (long)n * n, batchCount);
         using var infos = new DeviceBuffer<int>(batchCount);
@@ -150,6 +156,8 @@ public static partial class DenseSolver
     private static unsafe int[] LuFactorBatchedComplexCore(
         DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, int n, int batchCount, CudaStream s)
     {
+        Dim(n, nameof(n)); Dim(batchCount, nameof(batchCount));
+        Need(a.Length, (long)n * n * batchCount, nameof(a)); Need(ipiv.Length, (long)n * batchCount, nameof(ipiv));
         using var ptrs = MakePointerArray(a, (long)n * n, batchCount);
         using var infos = new DeviceBuffer<int>(batchCount);
         nint handle = CuBlasNative.Create();
@@ -226,6 +234,8 @@ public static partial class DenseSolver
         DeviceBuffer<Complex> a, DeviceBuffer<int> ipiv, DeviceBuffer<Complex> b,
         int n, int nrhs, int batchCount, CuBlasOperation trans, CudaStream s)
     {
+        Dim(n, nameof(n)); Dim(nrhs, nameof(nrhs)); Dim(batchCount, nameof(batchCount));
+        Need(a.Length, (long)n * n * batchCount, nameof(a)); Need(ipiv.Length, (long)n * batchCount, nameof(ipiv)); Need(b.Length, (long)n * nrhs * batchCount, nameof(b));
         using var aPtrs = MakePointerArray(a, (long)n * n, batchCount);
         using var bPtrs = MakePointerArray(b, (long)n * nrhs, batchCount);
         int info = 0;
@@ -295,6 +305,10 @@ public static partial class DenseSolver
         DeviceBuffer<Complex> a, DeviceBuffer<double> s, DeviceBuffer<Complex>? u, DeviceBuffer<Complex>? v,
         int m, int n, int batchCount, bool computeVectors, CudaStream stream)
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n)); Dim(batchCount, nameof(batchCount));
+        Need(a.Length, (long)m * n * batchCount, nameof(a)); Need(s.Length, (long)Math.Min(m, n) * batchCount, nameof(s));
+        if (u is not null) { Need(u.Length, (long)m * m * batchCount, nameof(u)); }
+        if (v is not null) { Need(v.Length, (long)n * n * batchCount, nameof(v)); }
         var jobz = computeVectors ? CuSolverEigMode.Vector : CuSolverEigMode.NoVector;
         // cuSOLVER dereferences U and V even for NOVECTOR, so supply scratch buffers when the caller has none.
         using var scratchU = u is null ? new DeviceBuffer<Complex>((long)m * m * batchCount) : null;

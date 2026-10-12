@@ -63,6 +63,9 @@ public static partial class SparseLinearAlgebra
         T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
         T* pBeta = AlignedScalar.Store(betaStore, beta);
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
+        CuSparseNative.SpMatGetSize(matrixDesc, out long rowsA, out long colsA, out _);
+        RequireLength(x.Length, transpose ? rowsA : colsA, nameof(x));
+        RequireLength(y.Length, transpose ? colsA : rowsA, nameof(y));
         var handle = CreateHandle(s);
         var dnVecX = CuSparseNative.CreateDnVec(x.Length, x.Pointer, cudaType);
         var dnVecY = CuSparseNative.CreateDnVec(y.Length, y.Pointer, cudaType);
@@ -89,6 +92,7 @@ public static partial class SparseLinearAlgebra
             }
             finally
             {
+                SyncQuietly(s); // the kernel may still be using the workspace
                 ws.Dispose();
             }
         }
@@ -154,6 +158,9 @@ public static partial class SparseLinearAlgebra
         T* pAlpha = AlignedScalar.Store(alphaStore, alpha);
         T* pBeta = AlignedScalar.Store(betaStore, beta);
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
+        ArgumentOutOfRangeException.ThrowIfLessThan(n, 1);
+        RequireLength(b.Length, (transpose ? matrixRows : matrixCols) * n, nameof(b));
+        RequireLength(c.Length, (transpose ? matrixCols : matrixRows) * n, nameof(c));
         var handle = CreateHandle(s);
         // order 1 = CUSPARSE_ORDER_COL (column-major)
         // B dimensions: (k × n) where k depends on op(A)
@@ -195,6 +202,7 @@ public static partial class SparseLinearAlgebra
             }
             finally
             {
+                SyncQuietly(s); // the kernel may still be using the workspace
                 ws.Dispose();
             }
         }
@@ -207,6 +215,30 @@ public static partial class SparseLinearAlgebra
     }
 
     // -- Helpers ------------------------------------------------------------
+
+    // Before a workspace goes back to its memory manager (which may hand it out again immediately), any queued work
+    // that uses it must have finished - also on the error path, where the call may have been submitted already.
+    // cuSPARSE reads and writes the dense operands without any bounds checks, so an undersized buffer corrupts memory
+    // or poisons the CUDA context instead of failing cleanly.
+    internal static void RequireLength(long actual, long required, string name)
+    {
+        if (actual < required)
+        {
+            throw new ArgumentException($"The buffer holds {actual} elements but {required} are required.", name);
+        }
+    }
+
+    internal static void SyncQuietly(CudaStream s)
+    {
+        try
+        {
+            s.Synchronize();
+        }
+        catch (Exception)
+        {
+            // The context may already be broken; the original exception is the one worth reporting.
+        }
+    }
 
     private static nint CreateHandle(CudaStream stream)
     {

@@ -52,14 +52,20 @@ public sealed partial class CudaRandom
 
     // ── Poisson ───────────────────────────────────────────────────────────────
 
+    private const double MaxPoissonLambda = 400000.0;
+
     /// <summary>Fills the buffer with Poisson-distributed integers with the given mean.</summary>
     /// <param name="buffer">Output buffer.</param>
-    /// <param name="lambda">Mean of the distribution; must be positive.</param>
+    /// <param name="lambda">Mean of the distribution; must be positive, finite and at most 400000 (the cuRAND limit).</param>
     public unsafe void FillPoisson(DeviceBuffer<uint> buffer, double lambda)
     {
         ObjectDisposedException.ThrowIf(_disposed, this);
         ArgumentNullException.ThrowIfNull(buffer);
-        ArgumentOutOfRangeException.ThrowIfLessThanOrEqual(lambda, 0.0);
+        if (!(lambda > 0.0 && lambda <= MaxPoissonLambda))
+        {
+            throw new ArgumentOutOfRangeException(nameof(lambda), lambda, $"lambda must be positive and at most {MaxPoissonLambda}.");
+        }
+
         CuRandNative.GeneratePoisson(_generator, (uint*)buffer.Pointer, (nuint)buffer.Length, lambda);
     }
 

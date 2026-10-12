@@ -90,6 +90,16 @@ public sealed unsafe class BsrMatrix<T> : IDisposable where T : unmanaged, INumb
         ArgumentNullException.ThrowIfNull(rowOffsets);
         ArgumentNullException.ThrowIfNull(colIndices);
         ArgumentNullException.ThrowIfNull(values);
+        long blockCount = colIndices.Length;
+        if (rowOffsets.Length < blockRows + 1)
+        {
+            throw new ArgumentException($"rowOffsets holds {rowOffsets.Length} elements but blockRows + 1 = {blockRows + 1} are required.", nameof(rowOffsets));
+        }
+
+        if (values.Length < blockCount * rowBlockDim * colBlockDim)
+        {
+            throw new ArgumentException($"values must hold BlockNNZ × rowBlockDim × colBlockDim = {blockCount * rowBlockDim * colBlockDim} elements.", nameof(values));
+        }
 
         BlockRows   = blockRows;
         BlockCols   = blockCols;

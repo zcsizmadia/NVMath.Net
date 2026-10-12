@@ -40,6 +40,8 @@ public static partial class DenseSolver
         DeviceBuffer<T> a, DeviceBuffer<int> ipiv, int n, int batchCount, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(n, nameof(n)); Dim(batchCount, nameof(batchCount));
+        Need(a.Length, (long)n * n * batchCount, nameof(a)); Need(ipiv.Length, (long)n * batchCount, nameof(ipiv));
         using var ptrs = MakePointerArray(a, (long)n * n, batchCount);
         using var infos = new DeviceBuffer<int>(batchCount);
         nint handle = CuBlasNative.Create();
@@ -105,6 +107,8 @@ public static partial class DenseSolver
         int n, int nrhs, int batchCount, bool transpose, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
+        Dim(n, nameof(n)); Dim(nrhs, nameof(nrhs)); Dim(batchCount, nameof(batchCount));
+        Need(a.Length, (long)n * n * batchCount, nameof(a)); Need(ipiv.Length, (long)n * batchCount, nameof(ipiv)); Need(b.Length, (long)n * nrhs * batchCount, nameof(b));
         using var aPtrs = MakePointerArray(a, (long)n * n, batchCount);
         using var bPtrs = MakePointerArray(b, (long)n * nrhs, batchCount);
         var trans = transpose ? CuBlasOperation.Transpose : CuBlasOperation.None;

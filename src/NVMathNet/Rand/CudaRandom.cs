@@ -35,11 +35,19 @@ public sealed partial class CudaRandom : IDisposable
         RngType = rngType;
         _streamOwned = stream is null;
         _stream = stream ?? new CudaStream();
-        _generator = CuRandNative.CreateGenerator(rngType);
-        CuRandNative.SetStream(_generator, _stream.Handle);
-        if (seed != 0)
+        try
         {
-            CuRandNative.SetSeed(_generator, seed);
+            _generator = CuRandNative.CreateGenerator(rngType);
+            CuRandNative.SetStream(_generator, _stream.Handle);
+            if (seed != 0)
+            {
+                CuRandNative.SetSeed(_generator, seed);
+            }
+        }
+        catch
+        {
+            Dispose(); // do not leak the generator or the stream when configuration fails
+            throw;
         }
     }
 

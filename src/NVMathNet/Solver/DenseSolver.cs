@@ -141,7 +141,7 @@ public static partial class DenseSolver
     // ── SVD ──────────────────────────────────────────────────────────────────
 
     /// <summary>
-    /// Computes the singular value decomposition A = U*diag(S)*VT (single-precision).
+    /// Computes the singular value decomposition A = U*diag(S)*VT (single-precision). Requires m &gt;= n (cuSOLVER gesvd); for a wide matrix decompose its transpose.
     /// </summary>
     /// <param name="a">Device buffer for m×n matrix A (overwritten).</param>
     /// <param name="s">Device buffer for min(m,n) singular values.</param>
@@ -180,7 +180,7 @@ public static partial class DenseSolver
     }
 
     /// <summary>
-    /// Computes the singular value decomposition A = U*diag(S)*VT (double-precision).
+    /// Computes the singular value decomposition A = U*diag(S)*VT (double-precision). Requires m &gt;= n (cuSOLVER gesvd); for a wide matrix decompose its transpose.
     /// </summary>
     public static async Task SvdAsync(
         DeviceBuffer<double> a, DeviceBuffer<double> s,
@@ -280,6 +280,8 @@ public static partial class DenseSolver
 
     private static unsafe void SolveCore(DeviceBuffer<float> a, DeviceBuffer<float> b, int n, int nrhs, CudaStream s)
     {
+        Dim(n, nameof(n)); Dim(nrhs, nameof(nrhs));
+        Need(a.Length, (long)n * n, nameof(a)); Need(b.Length, (long)n * nrhs, nameof(b));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -301,6 +303,8 @@ public static partial class DenseSolver
 
     private static unsafe void SolveCore(DeviceBuffer<double> a, DeviceBuffer<double> b, int n, int nrhs, CudaStream s)
     {
+        Dim(n, nameof(n)); Dim(nrhs, nameof(nrhs));
+        Need(a.Length, (long)n * n, nameof(a)); Need(b.Length, (long)n * nrhs, nameof(b));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -322,6 +326,8 @@ public static partial class DenseSolver
 
     private static unsafe void CholeskyCore(DeviceBuffer<float> a, int n, bool upper, CudaStream s)
     {
+        Dim(n, nameof(n));
+        Need(a.Length, (long)n * n, nameof(a));
         var uplo = upper ? CuBlasFillMode.Upper : CuBlasFillMode.Lower;
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
@@ -341,6 +347,8 @@ public static partial class DenseSolver
 
     private static unsafe void CholeskyCore(DeviceBuffer<double> a, int n, bool upper, CudaStream s)
     {
+        Dim(n, nameof(n));
+        Need(a.Length, (long)n * n, nameof(a));
         var uplo = upper ? CuBlasFillMode.Upper : CuBlasFillMode.Lower;
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
@@ -363,6 +371,10 @@ public static partial class DenseSolver
         DeviceBuffer<float> u, DeviceBuffer<float> vt,
         int m, int n, CudaStream s)
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(sv.Length, Math.Min(m, n), nameof(sv));
+        RequireTall(m, n);
+        Need(u.Length, (long)m * m, nameof(u)); Need(vt.Length, (long)n * n, nameof(vt));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -390,6 +402,10 @@ public static partial class DenseSolver
         DeviceBuffer<double> u, DeviceBuffer<double> vt,
         int m, int n, CudaStream s)
     {
+        Dim(m, nameof(m)); Dim(n, nameof(n));
+        Need(a.Length, (long)m * n, nameof(a)); Need(sv.Length, Math.Min(m, n), nameof(sv));
+        RequireTall(m, n);
+        Need(u.Length, (long)m * m, nameof(u)); Need(vt.Length, (long)n * n, nameof(vt));
         nint handle = CuSolverNative.Create();
         CuSolverNative.SetStream(handle, s.Handle);
         try
@@ -414,6 +430,8 @@ public static partial class DenseSolver
 
     private static unsafe void EigCore(DeviceBuffer<float> a, DeviceBuffer<float> w, int n, bool computeVectors, bool upper, CudaStream s)
     {
+        Dim(n, nameof(n));
+        Need(a.Length, (long)n * n, nameof(a)); Need(w.Length, n, nameof(w));
         var jobz = computeVectors ? CuSolverEigMode.Vector : CuSolverEigMode.NoVector;
         var uplo = upper ? CuBlasFillMode.Upper : CuBlasFillMode.Lower;
 
@@ -436,6 +454,8 @@ public static partial class DenseSolver
 
     private static unsafe void EigCore(DeviceBuffer<double> a, DeviceBuffer<double> w, int n, bool computeVectors, bool upper, CudaStream s)
     {
+        Dim(n, nameof(n));
+        Need(a.Length, (long)n * n, nameof(a)); Need(w.Length, n, nameof(w));
         var jobz = computeVectors ? CuSolverEigMode.Vector : CuSolverEigMode.NoVector;
         var uplo = upper ? CuBlasFillMode.Upper : CuBlasFillMode.Lower;
 
