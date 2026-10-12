@@ -100,6 +100,9 @@ First stable release. The public API is now considered stable; breaking changes 
   directories by version number (`v2.10` before `v2.8`), probes `CUTENSOR_ROOT` correctly and no longer logs while
   holding its lock. `NativeLibraryLoader.UnloadAll` is documented as unsafe while wrappers are in use.
 
+- **Packaging:** the package now ships a symbols package (`.snupkg`) with Source Link and deterministic CI builds;
+  the release workflow downloads the artifact built from the tagged commit.
+
 ### Not included (tracked after 1.0)
 
 Block-scaled MXFP8/NVFP4 matmul (needs Blackwell hardware to verify) and FFT prolog/epilog callbacks (needs

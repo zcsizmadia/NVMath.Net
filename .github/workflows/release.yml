@@ -32,7 +32,7 @@ jobs:
         with:
           workflow: build.yml
           workflow_conclusion: success
-          branch: main             # Strictly target the main branch
+          commit: ${{ github.sha }}  # The build of exactly the tagged commit, not merely the latest one on main
           name: nuget-package
           path: ./nupkgs
           check_artifacts: true    # Ensures the workflow actually has the named artifact

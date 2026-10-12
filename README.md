@@ -225,7 +225,7 @@ dotnet test
 The hosted CI has no GPU: it builds the library, tests and samples and packs the NuGet package, but does not run the
 tests. Run them locally before sending a change.
 
-Local builds target `net10.0` only; with `CI=true` the library and tests target `net8.0;net9.0;net10.0`.
+The library and tests target `net8.0`, `net9.0` and `net10.0` (set by `DefaultTargetFrameworks` in `Directory.Build.props`); the samples target `net10.0`.
 
 ---
 
