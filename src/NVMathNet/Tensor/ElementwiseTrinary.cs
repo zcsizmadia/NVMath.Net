@@ -28,6 +28,7 @@ public sealed class ElementwiseTrinary : IAsyncDisposable, IDisposable
     private readonly nint _handle;
     private readonly nint _descA, _descB, _descC, _descD;
     private readonly nint _opDesc;
+    private readonly nint _computeDesc;
     private readonly nint _plan;
     private bool _disposed;
 
@@ -84,6 +85,7 @@ public sealed class ElementwiseTrinary : IAsyncDisposable, IDisposable
         _streamOwned = stream is null;
 
         var nativeType = (CudaDataType)(int)dataType;
+        _computeDesc = TensorContraction.ResolveComputeDesc(dataType);
 
         _handle = CuTensorNative.Create();
 
@@ -98,7 +100,7 @@ public sealed class ElementwiseTrinary : IAsyncDisposable, IDisposable
             _descB, (int[])modeB.Clone(), opB,
             _descC, (int[])modeC.Clone(), opC,
             _descD, (int[])modeD.Clone(),
-            opAB, opABC);
+            opAB, opABC, _computeDesc);
 
         // v2 requires a plan for execution
         var planPref = CuTensorNative.CreatePlanPreference(_handle);
@@ -162,12 +164,17 @@ public sealed class ElementwiseTrinary : IAsyncDisposable, IDisposable
 
     private unsafe void RunEwTrinary(nint pA, nint pB, nint pC, nint pD, double alpha, double beta, double gamma)
     {
-        float fa = (float)alpha, fb = (float)beta, fg = (float)gamma;
+        byte* a = stackalloc byte[8];
+        byte* b = stackalloc byte[8];
+        byte* g = stackalloc byte[8];
+        TensorScalars.Encode(alpha, _computeDesc, a);
+        TensorScalars.Encode(beta, _computeDesc, b);
+        TensorScalars.Encode(gamma, _computeDesc, g);
         CuTensorNative.ElementwiseTrinaryExecute(
             _handle, _plan,
-            &fa, (void*)pA,
-            &fb, (void*)pB,
-            &fg, (void*)pC,
+            a, (void*)pA,
+            b, (void*)pB,
+            g, (void*)pC,
             (void*)pD, _ownedStream.Handle);
     }
 

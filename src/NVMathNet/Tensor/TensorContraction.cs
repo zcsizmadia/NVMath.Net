@@ -114,7 +114,7 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
             _                                 => (CuTensorAlgo)_options.Algorithm,
         };
 
-    private static nint ResolveComputeDesc(TensorDataType dt) =>
+    internal static nint ResolveComputeDesc(TensorDataType dt) =>
         dt switch
         {
             TensorDataType.Float16    => CuTensorNative.ComputeDesc16F,
@@ -124,9 +124,6 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
             TensorDataType.Complex128 => CuTensorNative.ComputeDesc64F,
             _ => CuTensorNative.ComputeDesc32F
         };
-
-    private bool IsDoubleCompute =>
-        _computeDesc == CuTensorNative.ComputeDesc64F;
 
     // ── Plan ──────────────────────────────────────────────────────────────────
 
@@ -220,27 +217,17 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
 
     private unsafe void RunContraction(nint pA, nint pB, nint pC, nint pD, double alpha, double beta)
     {
-        // cuTENSOR expects the scalar type to match the compute type.
-        // For 64-bit compute, pass double*; for 32-bit, pass float*.
-        if (IsDoubleCompute)
-        {
-            CuTensorNative.Contract(
-                _handle, _plan,
-                &alpha, (void*)pA, (void*)pB,
-                &beta,  (void*)pC, (void*)pD,
-                (void*)_workspacePtr, _workspaceSize,
-                _ownedStream.Handle);
-        }
-        else
-        {
-            float fa = (float)alpha, fb = (float)beta;
-            CuTensorNative.Contract(
-                _handle, _plan,
-                &fa, (void*)pA, (void*)pB,
-                &fb, (void*)pC, (void*)pD,
-                (void*)_workspacePtr, _workspaceSize,
-                _ownedStream.Handle);
-        }
+        // cuTENSOR reads the scalars with the compute type (half, float or double).
+        byte* a = stackalloc byte[8];
+        byte* b = stackalloc byte[8];
+        TensorScalars.Encode(alpha, _computeDesc, a);
+        TensorScalars.Encode(beta, _computeDesc, b);
+        CuTensorNative.Contract(
+            _handle, _plan,
+            a, (void*)pA, (void*)pB,
+            b, (void*)pC, (void*)pD,
+            (void*)_workspacePtr, _workspaceSize,
+            _ownedStream.Handle);
     }
 
     /// <summary>Waits for all work on the internal stream to complete.</summary>
