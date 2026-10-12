@@ -25,6 +25,16 @@ First stable release. The public API is now considered stable; breaking changes 
 - **`CudaRandom` rejects a non-zero seed for quasirandom generators** with an `ArgumentException` (cuRAND does not
   support seeding them).
 
+- **`CsrMatrix<T>` constructor changed.** The old five-argument constructor was replaced (binary breaking; rebuild).
+  The `Interop` enum value corrections above change the numeric values of public interop enums.
+- **Single-/double-precision real FFT helpers.** `Fft.RFftAsync(DeviceBuffer<float>)` previously returned a
+  `DeviceBuffer<Complex>` of garbage (single-precision data in a double-complex buffer). It now returns interleaved
+  `(re, im)` floats; `RFftAsync(DeviceBuffer<double>)` returns `DeviceBuffer<Complex>`. `IRFftAsync` has matching
+  `Complex`->`double` and interleaved `float`->`float` overloads.
+- **`TensorReduction.Execute(pA, pD, ...)` renamed `ExecuteInPlace`** (the shorter overload silently captured calls
+  meant for the four-pointer form).
+- **In-place R2C/C2R `Fft` throws `NotSupportedException`** (it needs a padded real layout that was never implemented).
+
 ### Added
 
 - **FFT:** N-D and batched plans with leading- or trailing-axis layouts; `FftOptions.Normalization`
@@ -71,6 +81,11 @@ First stable release. The public API is now considered stable; breaking changes 
 - **FFT:** batch distances for R2C and C2R used the full extent for the half-spectrum operand.
 - **Build:** the `TUnit` meta package was left at an old version while `TUnit.Core`/`Assertions` moved on; Dependabot
   now updates the `TUnit*` packages together. CI builds the test and sample projects as well as the library.
+
+- **Review fixes (FFT / cuTENSOR):** static FFT helpers dropped `Normalization` and mutated the caller's options;
+  `FftOptions` is now snapshotted at construction; Float16 contractions use 32F compute with float scalars; complex
+  tensor scalars no longer over-read the stack; plans synchronise their stream before releasing workspace; constructors
+  and helpers no longer leak streams or output buffers on failure.
 
 ### Not included (tracked after 1.0)
 

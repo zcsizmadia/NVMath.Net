@@ -314,7 +314,7 @@ public static unsafe partial class CuTensorNative
     /// <param name="handle">cuTENSOR handle.</param>
     /// <param name="numModes">Number of dimensions.</param>
     /// <param name="extent">Size of each dimension.</param>
-    /// <param name="stride">Stride for each dimension in elements; <c>null</c> = packed row-major.</param>
+    /// <param name="stride">Stride for each dimension in elements; <c>null</c> = packed column-major (the first mode has stride 1).</param>
     /// <param name="dataType">Element data type.</param>
     /// <param name="alignmentRequirement">Alignment in bytes of the data pointer (default: 128).</param>
     public static nint CreateTensorDescriptor(

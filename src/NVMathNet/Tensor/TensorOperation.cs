@@ -50,9 +50,21 @@ public abstract class TensorOperation : IAsyncDisposable, IDisposable
         _blocking = (options ?? new TensorContractionOptions()).Blocking;
         _streamOwned = stream is null;
         Stream = stream ?? new CudaStream();
-        NativeType = (CudaDataType)(int)dataType;
-        ComputeDesc = TensorContraction.ResolveComputeDesc(dataType);
-        Handle = CuTensorNative.Create();
+        try
+        {
+            NativeType = (CudaDataType)(int)dataType;
+            ComputeDesc = TensorContraction.ResolveComputeDesc(dataType);
+            Handle = CuTensorNative.Create();
+        }
+        catch
+        {
+            if (_streamOwned)
+            {
+                Stream.Dispose();
+            }
+
+            throw;
+        }
     }
 
     /// <summary>Creates a packed tensor descriptor owned (and later destroyed) by this operation.</summary>
@@ -110,14 +122,6 @@ public abstract class TensorOperation : IAsyncDisposable, IDisposable
         }
     }
 
-    internal async Task AfterLaunchAsync(CancellationToken ct)
-    {
-        if (_blocking)
-        {
-            await Stream.SynchronizeAsync(ct).ConfigureAwait(false);
-        }
-    }
-
     /// <summary>Waits for all work on the internal stream to complete.</summary>
     public Task SynchronizeAsync(CancellationToken ct = default) => Stream.SynchronizeAsync(ct);
 
@@ -142,6 +146,15 @@ public abstract class TensorOperation : IAsyncDisposable, IDisposable
         }
 
         _disposed = true;
+        try
+        {
+            Stream.Synchronize(); // queued work may still use the plan and workspace
+        }
+        catch (Exception)
+        {
+            // The context may already be broken; keep releasing resources.
+        }
+
         if (_plan != 0)
         {
             CuTensorNative.DestroyPlan(_plan);
@@ -218,8 +231,8 @@ public sealed class TensorPermutation : TensorOperation
     public unsafe void Execute(nint pA, nint pB, double alpha = 1.0)
     {
         ThrowIfDisposed();
-        byte* a = stackalloc byte[8];
-        TensorScalars.Encode(alpha, ComputeDesc, a);
+        Span<byte> aStore = stackalloc byte[AlignedScalar.StorageSize];
+        byte* a = TensorScalars.Store(aStore, alpha, ComputeDesc);
         CuTensorNative.Permute(Handle, Plan, a, (void*)pA, (void*)pB, Stream.Handle);
         AfterLaunch();
     }
@@ -298,10 +311,10 @@ public sealed class ElementwiseBinary : TensorOperation
     public unsafe void Execute(nint pA, nint pC, nint pD, double alpha = 1.0, double gamma = 1.0)
     {
         ThrowIfDisposed();
-        byte* a = stackalloc byte[8];
-        byte* g = stackalloc byte[8];
-        TensorScalars.Encode(alpha, ComputeDesc, a);
-        TensorScalars.Encode(gamma, ComputeDesc, g);
+        Span<byte> aStore = stackalloc byte[AlignedScalar.StorageSize];
+        Span<byte> gStore = stackalloc byte[AlignedScalar.StorageSize];
+        byte* a = TensorScalars.Store(aStore, alpha, ComputeDesc);
+        byte* g = TensorScalars.Store(gStore, gamma, ComputeDesc);
         CuTensorNative.ElementwiseBinaryExecute(Handle, Plan, a, (void*)pA, g, (void*)pC, (void*)pD, Stream.Handle);
         AfterLaunch();
     }
@@ -382,17 +395,20 @@ public sealed class TensorReduction : TensorOperation
     public unsafe void Execute(nint pA, nint pC, nint pD, double alpha = 1.0, double beta = 0.0)
     {
         ThrowIfDisposed();
-        byte* a = stackalloc byte[8];
-        byte* b = stackalloc byte[8];
-        TensorScalars.Encode(alpha, ComputeDesc, a);
-        TensorScalars.Encode(beta, ComputeDesc, b);
+        Span<byte> aStore = stackalloc byte[AlignedScalar.StorageSize];
+        Span<byte> bStore = stackalloc byte[AlignedScalar.StorageSize];
+        byte* a = TensorScalars.Store(aStore, alpha, ComputeDesc);
+        byte* b = TensorScalars.Store(bStore, beta, ComputeDesc);
         CuTensorNative.Reduce(Handle, Plan, a, (void*)pA, b, (void*)pC, (void*)pD,
             (void*)WorkspacePointer, WorkspaceSize, Stream.Handle);
         AfterLaunch();
     }
 
-    /// <summary>Executes <c>D = alpha · reduce(A) + beta · D</c> in place on D.</summary>
-    public void Execute(nint pA, nint pD, double alpha = 1.0, double beta = 0.0) =>
+    /// <summary>
+    /// Executes <c>D = alpha · reduce(A) + beta · D</c> in place on D. (Named differently from <c>Execute</c> because an
+    /// overload with one pointer fewer would silently capture calls such as <c>Execute(a, d, 2, 0)</c>.)
+    /// </summary>
+    public void ExecuteInPlace(nint pA, nint pD, double alpha = 1.0, double beta = 0.0) =>
         Execute(pA, pD, pD, alpha, beta);
 
     /// <summary>Asynchronous version of <see cref="Execute(nint, nint, nint, double, double)"/>.</summary>

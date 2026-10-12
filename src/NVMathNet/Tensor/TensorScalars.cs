@@ -8,24 +8,30 @@ namespace NVMathNet.Tensor;
 internal static unsafe class TensorScalars
 {
     /// <summary>
-    /// Writes <paramref name="value"/> into <paramref name="dst"/> (at least 8 bytes) using the
-    /// scalar type that cuTENSOR expects for <paramref name="computeDesc"/>: half for 16F,
-    /// double for 64F and float otherwise.
+    /// Stores <paramref name="value"/> in 16-byte aligned memory inside <paramref name="storage"/>
+    /// (at least <see cref="AlignedScalar.StorageSize"/> bytes) using the scalar type that cuTENSOR expects for
+    /// <paramref name="computeDesc"/>, and returns the address. The scalar type follows the data type: complex tensors
+    /// take a complex scalar (16 bytes for double complex), which is written as <c>value + 0i</c>; the whole slot is
+    /// zeroed so the imaginary part and any padding are defined.
     /// </summary>
-    public static void Encode(double value, nint computeDesc, byte* dst)
+    public static byte* Store(Span<byte> storage, double value, nint computeDesc)
     {
-        *(ulong*)dst = 0;
+        byte* p = AlignedScalar.Store(storage, (byte)0);
+        *(ulong*)p = 0;
+        *((ulong*)p + 1) = 0;
         if (computeDesc == CuTensorNative.ComputeDesc64F)
         {
-            *(double*)dst = value;
+            *(double*)p = value;
         }
         else if (computeDesc == CuTensorNative.ComputeDesc16F)
         {
-            *(Half*)dst = (Half)value;
+            *(Half*)p = (Half)value;
         }
         else
         {
-            *(float*)dst = (float)value;
+            *(float*)p = (float)value;
         }
+
+        return p;
     }
 }
