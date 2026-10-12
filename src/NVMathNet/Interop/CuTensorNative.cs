@@ -150,7 +150,7 @@ public enum CuTensorJitMode : int
 /// <summary>
 /// Raw P/Invoke bindings for cuTENSOR v2.
 /// </summary>
-public static unsafe class CuTensorNative
+public static unsafe partial class CuTensorNative
 {
     private const string LibWindows = "cutensor.dll";
     private const string LibLinux   = "libcutensor.so.2";

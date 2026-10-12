@@ -313,4 +313,215 @@ public sealed class TensorTests
             await Assert.That(Math.Abs(r[i] - 0.1 * hA[i])).IsLessThan(1e-13);
         }
     }
+
+    // ── Permutation, element-wise binary and reduction (column-major tensors) ──
+
+    private static DeviceBuffer<T> Upload<T>(T[] host) where T : unmanaged, System.Numerics.INumberBase<T>
+    {
+        var buf = new DeviceBuffer<T>(host.Length);
+        buf.CopyFrom(host.AsSpan());
+        return buf;
+    }
+
+    [Test]
+    public async Task TensorPermutation_Transpose2D()
+    {
+        const int I = 2, J = 3;
+        float[] a = new float[I * J];
+        for (int i = 0; i < I; i++)
+        {
+            for (int j = 0; j < J; j++)
+            {
+                a[i + I * j] = i * 10 + j;
+            }
+        }
+
+        using var dA = Upload(a);
+        using var dB = new DeviceBuffer<float>(I * J);
+        using var perm = new TensorPermutation([I, J], [0, 1], [1, 0], options: new TensorContractionOptions { Blocking = true });
+        await perm.ExecuteAsync(dA, dB);
+
+        float[] b = dB.ToArray(); // B is J x I: B[j + J*i] = A[i,j]
+        for (int i = 0; i < I; i++)
+        {
+            for (int j = 0; j < J; j++)
+            {
+                await Assert.That(b[j + J * i]).IsEqualTo(a[i + I * j]);
+            }
+        }
+    }
+
+    [Test]
+    public async Task TensorPermutation_3D_WithScaleAndAbs()
+    {
+        // A[a,b,c] with extents [2,3,4]; B modes [2,0,1] => B[c,a,b], scaled by 2 with abs applied.
+        const int A0 = 2, A1 = 3, A2 = 4;
+        float[] a = new float[A0 * A1 * A2];
+        for (int i = 0; i < a.Length; i++)
+        {
+            a[i] = (i % 5 - 2) * 1.5f;
+        }
+
+        using var dA = Upload(a);
+        using var dB = new DeviceBuffer<float>(a.Length);
+        using var perm = new TensorPermutation(
+            [A0, A1, A2], [0, 1, 2], [2, 0, 1], TensorDataType.Float32, CuTensorOperator.Abs,
+            new TensorContractionOptions { Blocking = true });
+        await perm.ExecuteAsync(dA, dB, alpha: 2.0);
+
+        float[] b = dB.ToArray();
+        for (int x = 0; x < A0; x++)
+        {
+            for (int y = 0; y < A1; y++)
+            {
+                for (int z = 0; z < A2; z++)
+                {
+                    float expected = 2f * MathF.Abs(a[x + A0 * (y + A1 * z)]);
+                    await Assert.That(Math.Abs(b[z + A2 * (x + A0 * y)] - expected)).IsLessThan(1e-6f);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public async Task TensorPermutation_InvalidModes_Throw()
+    {
+        await Assert.That(() => new TensorPermutation([2, 3], [0, 1], [0, 2])).Throws<ArgumentException>();
+        await Assert.That(() => new TensorPermutation([2, 3], [0, 0], [0, 0])).Throws<ArgumentException>();
+    }
+
+    [Test]
+    public async Task ElementwiseBinary_AddsTransposedOperand()
+    {
+        // D[i,j] = A[i,j] + 2 * C[j,i]
+        const int I = 2, J = 3;
+        float[] a = [.. Enumerable.Range(0, I * J).Select(v => (float)v)];
+        float[] c = [.. Enumerable.Range(0, I * J).Select(v => 100f + v)]; // C is J x I
+        using var dA = Upload(a);
+        using var dC = Upload(c);
+        using var dD = new DeviceBuffer<float>(I * J);
+
+        using var op = new ElementwiseBinary(
+            [J, I], [1, 0], [I, J], [0, 1], [I, J], [0, 1],
+            options: new TensorContractionOptions { Blocking = true });
+        await op.ExecuteAsync(dA, dC, dD, alpha: 1.0, gamma: 2.0);
+
+        float[] d = dD.ToArray();
+        for (int i = 0; i < I; i++)
+        {
+            for (int j = 0; j < J; j++)
+            {
+                float expected = a[j + J * i] + 2f * c[i + I * j];
+                await Assert.That(Math.Abs(d[i + I * j] - expected)).IsLessThan(1e-5f);
+            }
+        }
+    }
+
+    [Test]
+    public async Task ElementwiseBinary_MaxOperator()
+    {
+        float[] a = [.. Enumerable.Range(0, 12).Select(v => (v - 6) * 0.5f)];
+        float[] c = [.. Enumerable.Range(0, 12).Select(v => 2f - v * 0.4f)];
+        using var dA = Upload(a);
+        using var dC = Upload(c);
+        using var dD = new DeviceBuffer<float>(12);
+
+        using var op = new ElementwiseBinary(
+            [3, 4], [0, 1], [3, 4], [0, 1], [3, 4], [0, 1],
+            opAC: CuTensorOperator.Max, options: new TensorContractionOptions { Blocking = true });
+        await op.ExecuteAsync(dA, dC, dD);
+
+        float[] d = dD.ToArray();
+        for (int i = 0; i < d.Length; i++)
+        {
+            await Assert.That(Math.Abs(d[i] - Math.Max(a[i], c[i]))).IsLessThan(1e-6f);
+        }
+    }
+
+    [Test]
+    public async Task TensorReduction_SumOverModes()
+    {
+        // A is 3 x 4 (modes 0,1). Reduce mode 1 -> D[i] = sum_j A[i,j]; reduce mode 0 -> D[j] = sum_i A[i,j].
+        const int I = 3, J = 4;
+        float[] a = new float[I * J];
+        for (int i = 0; i < I; i++)
+        {
+            for (int j = 0; j < J; j++)
+            {
+                a[i + I * j] = (i + 1) * (j + 2);
+            }
+        }
+
+        using var dA = Upload(a);
+
+        using (var dRows = new DeviceBuffer<float>(I))
+        {
+            dRows.Clear();
+            using var red = new TensorReduction([I, J], [0, 1], [I], [0], options: new TensorContractionOptions { Blocking = true });
+            await red.ExecuteAsync(dA, dRows);
+            float[] d = dRows.ToArray();
+            for (int i = 0; i < I; i++)
+            {
+                float expected = 0;
+                for (int j = 0; j < J; j++)
+                {
+                    expected += a[i + I * j];
+                }
+
+                await Assert.That(Math.Abs(d[i] - expected)).IsLessThan(1e-4f);
+            }
+        }
+
+        using (var dCols = new DeviceBuffer<float>(J))
+        {
+            dCols.Clear();
+            using var red = new TensorReduction([I, J], [0, 1], [J], [1], options: new TensorContractionOptions { Blocking = true });
+            await red.ExecuteAsync(dA, dCols);
+            float[] d = dCols.ToArray();
+            for (int j = 0; j < J; j++)
+            {
+                float expected = 0;
+                for (int i = 0; i < I; i++)
+                {
+                    expected += a[i + I * j];
+                }
+
+                await Assert.That(Math.Abs(d[j] - expected)).IsLessThan(1e-4f);
+            }
+        }
+    }
+
+    [Test]
+    public async Task TensorReduction_MaxAndAlphaBeta_Double()
+    {
+        const int I = 3, J = 4;
+        double[] a = [.. Enumerable.Range(0, I * J).Select(v => Math.Sin(v) * 5)];
+        using var dA = Upload(a);
+        using var dD = Upload(new double[] { 10, 20, 30 });
+
+        // D = 0.5 * max_j(A[i,j]) + 0.25 * D
+        using var red = new TensorReduction(
+            [I, J], [0, 1], [I], [0], TensorDataType.Float64, CuTensorOperator.Max,
+            options: new TensorContractionOptions { Blocking = true });
+        await red.ExecuteAsync(dA, dD, alpha: 0.5, beta: 0.25);
+
+        double[] d = dD.ToArray();
+        double[] init = [10, 20, 30];
+        for (int i = 0; i < I; i++)
+        {
+            double max = double.MinValue;
+            for (int j = 0; j < J; j++)
+            {
+                max = Math.Max(max, a[i + I * j]);
+            }
+
+            await Assert.That(Math.Abs(d[i] - (0.5 * max + 0.25 * init[i]))).IsLessThan(1e-12);
+        }
+    }
+
+    [Test]
+    public async Task TensorReduction_ModeNotInInput_Throws()
+    {
+        await Assert.That(() => new TensorReduction([3, 4], [0, 1], [3], [7])).Throws<ArgumentException>();
+    }
 }
