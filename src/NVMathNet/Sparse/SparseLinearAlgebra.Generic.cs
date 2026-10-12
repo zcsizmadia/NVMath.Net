@@ -63,11 +63,11 @@ public static partial class SparseLinearAlgebra
             throw new ArgumentException("SpSV requires a square matrix.", nameof(matrix));
         }
 
-        await RunAsync(stream, ct, s => SpSVCore(matrix, x, y, triangle, diagonal, alpha ?? T.One, transpose, s)).ConfigureAwait(false);
+        await RunAsync(stream, ct, s => SpSVCore(matrix.Descriptor, x, y, triangle, diagonal, alpha ?? T.One, transpose, s)).ConfigureAwait(false);
     }
 
     private static unsafe void SpSVCore<T>(
-        CsrMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        nint matrixDesc, DeviceBuffer<T> x, DeviceBuffer<T> y,
         SparseTriangle triangle, SparseDiagonal diagonal, T alpha, bool transpose, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
@@ -79,17 +79,17 @@ public static partial class SparseLinearAlgebra
         Workspace ws = default;
         try
         {
-            CuSparseNative.SpMatSetAttribute(matrix.Descriptor, CuSparseSpMatAttribute.FillMode, (int)triangle);
-            CuSparseNative.SpMatSetAttribute(matrix.Descriptor, CuSparseSpMatAttribute.DiagType, (int)diagonal);
+            CuSparseNative.SpMatSetAttribute(matrixDesc, CuSparseSpMatAttribute.FillMode, (int)triangle);
+            CuSparseNative.SpMatSetAttribute(matrixDesc, CuSparseSpMatAttribute.DiagType, (int)diagonal);
             vecX = CuSparseNative.CreateDnVec(x.Length, x.Pointer, cudaType);
             vecY = CuSparseNative.CreateDnVec(y.Length, y.Pointer, cudaType);
             descr = CuSparseNative.SpSVCreateDescr();
 
-            nuint size = CuSparseNative.SpSVBufferSize(handle, opA, &alpha, matrix.Descriptor, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
+            nuint size = CuSparseNative.SpSVBufferSize(handle, opA, &alpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
             ws = new Workspace(size);
             buffer = ws.Pointer;
-            CuSparseNative.SpSVAnalysis(handle, opA, &alpha, matrix.Descriptor, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr, buffer);
-            CuSparseNative.SpSVSolve(handle, opA, &alpha, matrix.Descriptor, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
+            CuSparseNative.SpSVAnalysis(handle, opA, &alpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr, buffer);
+            CuSparseNative.SpSVSolve(handle, opA, &alpha, matrixDesc, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
             s.Synchronize();
         }
         finally
@@ -151,34 +151,33 @@ public static partial class SparseLinearAlgebra
             throw new ArgumentException("SpSM requires a square matrix.", nameof(matrix));
         }
 
-        await RunAsync(stream, ct, s => SpSMCore(matrix, b, c, n, triangle, diagonal, alpha ?? T.One, transpose, s)).ConfigureAwait(false);
+        await RunAsync(stream, ct, s => SpSMCore(matrix.Descriptor, matrix.Rows, b, c, n, triangle, diagonal, alpha ?? T.One, transpose, s)).ConfigureAwait(false);
     }
 
     private static unsafe void SpSMCore<T>(
-        CsrMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        nint matrixDesc, long m, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
         SparseTriangle triangle, SparseDiagonal diagonal, T alpha, bool transpose, CudaStream s)
         where T : unmanaged, INumberBase<T>
     {
         var cudaType = CudaRuntime.GetCudaDataType<T>();
         var opA = transpose ? CuSparseOperation.Transpose : CuSparseOperation.None;
-        long m = matrix.Rows;
         var handle = CreateHandle(s);
         nint matB = 0, matC = 0, descr = 0;
         void* buffer = null;
         Workspace ws = default;
         try
         {
-            CuSparseNative.SpMatSetAttribute(matrix.Descriptor, CuSparseSpMatAttribute.FillMode, (int)triangle);
-            CuSparseNative.SpMatSetAttribute(matrix.Descriptor, CuSparseSpMatAttribute.DiagType, (int)diagonal);
+            CuSparseNative.SpMatSetAttribute(matrixDesc, CuSparseSpMatAttribute.FillMode, (int)triangle);
+            CuSparseNative.SpMatSetAttribute(matrixDesc, CuSparseSpMatAttribute.DiagType, (int)diagonal);
             matB = CuSparseNative.CreateDnMat(m, n, m, b.Pointer, cudaType, ColMajor);
             matC = CuSparseNative.CreateDnMat(m, n, m, c.Pointer, cudaType, ColMajor);
             descr = CuSparseNative.SpSMCreateDescr();
 
-            nuint size = CuSparseNative.SpSMBufferSize(handle, opA, CuSparseOperation.None, &alpha, matrix.Descriptor, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
+            nuint size = CuSparseNative.SpSMBufferSize(handle, opA, CuSparseOperation.None, &alpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
             ws = new Workspace(size);
             buffer = ws.Pointer;
-            CuSparseNative.SpSMAnalysis(handle, opA, CuSparseOperation.None, &alpha, matrix.Descriptor, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr, buffer);
-            CuSparseNative.SpSMSolve(handle, opA, CuSparseOperation.None, &alpha, matrix.Descriptor, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
+            CuSparseNative.SpSMAnalysis(handle, opA, CuSparseOperation.None, &alpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr, buffer);
+            CuSparseNative.SpSMSolve(handle, opA, CuSparseOperation.None, &alpha, matrixDesc, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
             s.Synchronize();
         }
         finally
@@ -340,20 +339,16 @@ public static partial class SparseLinearAlgebra
             CuSparseNative.SpGemmCompute(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size2, buf2);
 
             CuSparseNative.SpMatGetSize(matC, out long rows, out long colCount, out long nnz);
-            if (nnz == 0)
-            {
-                throw new InvalidOperationException("The sparse product has no non-zero entries.");
-            }
-
+            // cuSPARSE needs non-null arrays; an empty product keeps one-element placeholders and reports nnz = 0.
             offsets = new DeviceBuffer<int>(rows + 1);
-            cols = new DeviceBuffer<int>(nnz);
-            vals = new DeviceBuffer<T>(nnz);
+            cols = new DeviceBuffer<int>(Math.Max(nnz, 1));
+            vals = new DeviceBuffer<T>(Math.Max(nnz, 1));
             CuSparseNative.CsrSetPointers(matC, offsets.Pointer, cols.Pointer, vals.Pointer);
             CuSparseNative.SpGemmCopy(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr);
             s.Synchronize();
 
             // The CsrMatrix takes ownership of the buffers.
-            var result = new CsrMatrix<T>(rows, colCount, offsets, cols, vals);
+            var result = new CsrMatrix<T>(rows, colCount, offsets, cols, vals, nnz);
             offsets = null;
             cols = null;
             vals = null;
@@ -427,6 +422,72 @@ public static partial class SparseLinearAlgebra
     /// <inheritdoc cref="SpMMAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, long, float, float, bool, CudaStream, CancellationToken)"/>
     public static Task SpMMAsync<T>(
         BsrMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        float alpha = 1.0f, float beta = 0.0f, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(b);
+        ArgumentNullException.ThrowIfNull(c);
+        return RunAsync(stream, ct, s => SpMMCore(matrix.Descriptor, matrix.Rows, matrix.Cols, b, c, n, alpha, beta, transpose, s));
+    }
+
+    // -- COO triangular solves and CSC SpMV/SpMM -----------------------------
+
+    /// <summary>Triangular solve <c>op(A) · y = alpha · x</c> for a COO matrix (row-major sorted entries).</summary>
+    /// <inheritdoc cref="SpSVAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, SparseTriangle, SparseDiagonal, T?, bool, CudaStream, CancellationToken)"/>
+    public static Task SpSVAsync<T>(
+        CooMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        SparseTriangle triangle = SparseTriangle.Lower, SparseDiagonal diagonal = SparseDiagonal.NonUnit,
+        T? alpha = null, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(y);
+        if (matrix.Rows != matrix.Cols)
+        {
+            throw new ArgumentException("SpSV requires a square matrix.", nameof(matrix));
+        }
+
+        return RunAsync(stream, ct, s => SpSVCore(matrix.Descriptor, x, y, triangle, diagonal, alpha ?? T.One, transpose, s));
+    }
+
+    /// <summary>Triangular solve <c>op(A) · C = alpha · B</c> for a COO matrix.</summary>
+    /// <inheritdoc cref="SpSMAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, long, SparseTriangle, SparseDiagonal, T?, bool, CudaStream, CancellationToken)"/>
+    public static Task SpSMAsync<T>(
+        CooMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
+        SparseTriangle triangle = SparseTriangle.Lower, SparseDiagonal diagonal = SparseDiagonal.NonUnit,
+        T? alpha = null, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(b);
+        ArgumentNullException.ThrowIfNull(c);
+        if (matrix.Rows != matrix.Cols)
+        {
+            throw new ArgumentException("SpSM requires a square matrix.", nameof(matrix));
+        }
+
+        return RunAsync(stream, ct, s => SpSMCore(matrix.Descriptor, matrix.Rows, b, c, n, triangle, diagonal, alpha ?? T.One, transpose, s));
+    }
+
+    /// <summary>Sparse matrix-vector product <c>y = alpha · op(A) · x + beta · y</c> for a CSC matrix.</summary>
+    /// <inheritdoc cref="SpMVAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, float, float, bool, CudaStream, CancellationToken)"/>
+    public static Task SpMVAsync<T>(
+        CscMatrix<T> matrix, DeviceBuffer<T> x, DeviceBuffer<T> y,
+        float alpha = 1.0f, float beta = 0.0f, bool transpose = false,
+        CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
+    {
+        ArgumentNullException.ThrowIfNull(matrix);
+        ArgumentNullException.ThrowIfNull(x);
+        ArgumentNullException.ThrowIfNull(y);
+        return RunAsync(stream, ct, s => SpMVCore(matrix.Descriptor, x, y, alpha, beta, transpose, s));
+    }
+
+    /// <summary>Sparse-dense matrix product <c>C = alpha · op(A) · B + beta · C</c> for a CSC matrix.</summary>
+    /// <inheritdoc cref="SpMMAsync{T}(CsrMatrix{T}, DeviceBuffer{T}, DeviceBuffer{T}, long, float, float, bool, CudaStream, CancellationToken)"/>
+    public static Task SpMMAsync<T>(
+        CscMatrix<T> matrix, DeviceBuffer<T> b, DeviceBuffer<T> c, long n,
         float alpha = 1.0f, float beta = 0.0f, bool transpose = false,
         CudaStream? stream = null, CancellationToken ct = default) where T : unmanaged, INumberBase<T>
     {

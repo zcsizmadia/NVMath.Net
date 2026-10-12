@@ -73,3 +73,15 @@ solver.Refactorize();       // reuses the analysis
 | `long FactorNonZeros`, `int PerturbedPivots` | Statistics from the last factorisation. |
 
 `DirectSolverOptions`: `Structure` (`General` = LU, `Symmetric` = LDLᵀ, `SymmetricPositiveDefinite` = Cholesky), `View` (`Full`, `Lower`, `Upper` — which triangle is stored for symmetric/SPD matrices), `Reordering` (`CuDssReorderingAlg`), `RefinementSteps` (iterative refinement, default 0).
+
+### CSC, COO triangular solves, empty products
+
+| Member | Description |
+|---|---|
+| `CscMatrix<T>` | Compressed Sparse Column matrix (`ColOffsets`, `RowIndices`, `Values`). Create from a CSR matrix with `CsrMatrix<T>.ToCsc()`. |
+| `SpMVAsync` / `SpMMAsync` overloads for `CscMatrix<T>` | Same parameters as the CSR versions. |
+| `SpSVAsync` / `SpSMAsync` overloads for `CooMatrix<T>` | Triangular solves on COO matrices (entries sorted by row). |
+| `SpGemmAsync` with an empty product | Returns a matrix with `NNZ == 0` (previously threw). |
+| `new CsrMatrix<T>(..., long? nnz)` | Optional explicit non-zero count, for matrices backed by placeholder buffers. |
+
+SpGEMM and SDDMM are only available for CSR matrices — cuSPARSE does not provide COO or BSR variants of these operations.
