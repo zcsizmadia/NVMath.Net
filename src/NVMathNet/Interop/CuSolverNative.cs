@@ -59,7 +59,7 @@ public enum CuBlasFillMode : int
 /// <summary>
 /// Raw P/Invoke bindings for cuSOLVER dense (cusolverDn).
 /// </summary>
-public static unsafe class CuSolverNative
+public static unsafe partial class CuSolverNative
 {
     private const string LibWindows = "cusolver64_12.dll";
     private const string LibLinux   = "libcusolver.so.12";
