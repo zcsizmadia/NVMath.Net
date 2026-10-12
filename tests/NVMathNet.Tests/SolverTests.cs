@@ -395,4 +395,74 @@ public sealed class SolverTests
         using var dPiv = new DeviceBuffer<int>(4);
         await Assert.That(async () => await DenseSolver.LuFactorBatchedAsync(dA, dPiv, 2, 2)).Throws<ArgumentException>();
     }
+
+    // ── Batched SVD (Jacobi) ─────────────────────────────────────────────────
+
+    private static readonly double[] BatchedSvdInput = [1, 3, 5, 2, 4, 6, 2, 1, 0, 0, 1, 3]; // two 3x2 matrices, col-major
+
+    [Test]
+    public async Task SvdBatched_ReconstructsEachMatrix()
+    {
+        const int M = 3, N = 2, Batch = 2, K = 2;
+        using var dA = new DeviceBuffer<double>(BatchedSvdInput.Length);
+        using var dS = new DeviceBuffer<double>(K * Batch);
+        using var dU = new DeviceBuffer<double>(M * M * Batch);
+        using var dV = new DeviceBuffer<double>(N * N * Batch);
+        dA.CopyFrom(BatchedSvdInput.AsSpan());
+
+        int[] infos = await DenseSolver.SvdBatchedAsync(dA, dS, dU, dV, M, N, Batch);
+        await Assert.That(infos.All(i => i == 0)).IsTrue();
+
+        double[] s = dS.ToArray(), u = dU.ToArray(), v = dV.ToArray();
+        for (int b = 0; b < Batch; b++)
+        {
+            await Assert.That(s[b * K] >= s[b * K + 1]).IsTrue();
+            for (int r = 0; r < M; r++)
+            {
+                for (int c = 0; c < N; c++)
+                {
+                    double sum = 0;
+                    for (int k = 0; k < K; k++)
+                    {
+                        // A = U diag(S) V^T; V is returned as V (n x n, col-major).
+                        sum += u[b * M * M + r + M * k] * s[b * K + k] * v[b * N * N + c + N * k];
+                    }
+
+                    await Assert.That(Math.Abs(sum - BatchedSvdInput[b * M * N + r + M * c])).IsLessThan(1e-9);
+                }
+            }
+        }
+    }
+
+    [Test]
+    public async Task SvdBatched_ValuesOnly_MatchesVectorRun()
+    {
+        const int M = 3, N = 2, Batch = 2, K = 2;
+        using var dA1 = new DeviceBuffer<double>(BatchedSvdInput.Length);
+        using var dA2 = new DeviceBuffer<double>(BatchedSvdInput.Length);
+        using var dS1 = new DeviceBuffer<double>(K * Batch);
+        using var dS2 = new DeviceBuffer<double>(K * Batch);
+        using var dU = new DeviceBuffer<double>(M * M * Batch);
+        using var dV = new DeviceBuffer<double>(N * N * Batch);
+        dA1.CopyFrom(BatchedSvdInput.AsSpan());
+        dA2.CopyFrom(BatchedSvdInput.AsSpan());
+
+        await DenseSolver.SvdBatchedAsync(dA1, dS1, dU, dV, M, N, Batch);
+        await DenseSolver.SvdBatchedAsync<double>(dA2, dS2, null, null, M, N, Batch, computeVectors: false);
+
+        double[] a = dS1.ToArray(), b = dS2.ToArray();
+        for (int i = 0; i < a.Length; i++)
+        {
+            await Assert.That(Math.Abs(a[i] - b[i])).IsLessThan(1e-9);
+        }
+    }
+
+    [Test]
+    public async Task SvdBatched_TooLargeMatrix_Throws()
+    {
+        using var dA = new DeviceBuffer<double>(33 * 33);
+        using var dS = new DeviceBuffer<double>(33);
+        await Assert.That(async () => await DenseSolver.SvdBatchedAsync<double>(dA, dS, null, null, 33, 33, 1, computeVectors: false))
+            .Throws<ArgumentOutOfRangeException>();
+    }
 }
