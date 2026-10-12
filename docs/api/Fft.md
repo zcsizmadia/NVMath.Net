@@ -44,5 +44,7 @@ Stateful cuFFT plan wrapper. Implements `IAsyncDisposable`, `IDisposable`.
 |---|---|
 | `static Task<DeviceBuffer<Complex>> FftAsync(...)` | One-shot forward C2C FFT. Returns new output buffer. |
 | `static Task<DeviceBuffer<Complex>> IFftAsync(...)` | One-shot inverse C2C FFT. |
-| `static Task<DeviceBuffer<Complex>> RFftAsync(DeviceBuffer<float> input, ...)` | Real-to-complex FFT. Output length = `n/2+1`. |
-| `static Task<DeviceBuffer<float>> IRFftAsync(DeviceBuffer<Complex> input, long[] outputShape, ...)` | Complex-to-real inverse FFT. |
+| `static Task<DeviceBuffer<Complex>> RFftAsync(DeviceBuffer<double> input, long[] shape, ...)` | Double-precision real-to-complex FFT. Output length = `n/2+1` along the last axis. |
+| `static Task<DeviceBuffer<float>> RFftAsync(DeviceBuffer<float> input, long[] shape, ...)` | Single-precision real-to-complex FFT. .NET has no single-precision complex type, so the result is interleaved `(re, im)` floats (`2 * (n/2+1)` per row). |
+| `static Task<DeviceBuffer<double>> IRFftAsync(DeviceBuffer<Complex> input, long[] outputShape, ...)` | Double-precision complex-to-real inverse FFT. |
+| `static Task<DeviceBuffer<float>> IRFftAsync(DeviceBuffer<float> input, long[] outputShape, ...)` | Single-precision complex-to-real inverse FFT; input is interleaved `(re, im)` floats. |

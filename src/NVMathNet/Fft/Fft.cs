@@ -81,7 +81,7 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         }
 
         _shape = (long[])shape.Clone();
-        _options = options ?? new FftOptions();
+        _options = options?.Clone() ?? new FftOptions();
         _doublePrecision = doublePrecision;
 
         // Resolve axes
@@ -91,16 +91,30 @@ public sealed class Fft : IAsyncDisposable, IDisposable
 
         // Resolve FFT type
         _fftType = _options.FftType ?? FftType.C2C;
+        if (_options.InPlace && _fftType != FftType.C2C)
+        {
+            throw new NotSupportedException(
+                "In-place transforms are supported for C2C only: in-place R2C/C2R needs a padded real layout. Use an out-of-place plan.");
+        }
+
         _nativeType = ResolveCuFftType(_fftType, doublePrecision);
 
         // Create or adopt stream
         _ownedStream = stream ?? new CudaStream();
         _streamOwned = stream is null;
 
-        // Create plan handle
-        _plan = CuFftNative.Create();
-        CuFftNative.SetStream(_plan, _ownedStream.Handle);
-        CuFftNative.SetAutoAllocation(_plan, autoAllocate: false);
+        // Create plan handle; do not leak the stream or the plan if configuration fails.
+        try
+        {
+            _plan = CuFftNative.Create();
+            CuFftNative.SetStream(_plan, _ownedStream.Handle);
+            CuFftNative.SetAutoAllocation(_plan, autoAllocate: false);
+        }
+        catch
+        {
+            DisposeCore();
+            throw;
+        }
     }
 
     // ── Mapping helpers ───────────────────────────────────────────────────────
@@ -405,18 +419,26 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         FftOptions? options = null,
         CancellationToken ct = default)
     {
-        var opts = options ?? new FftOptions { FftType = FftType.C2C };
-        opts.FftType ??= FftType.C2C;
+        var opts = options?.Clone() ?? new FftOptions();
+        opts.FftType = FftType.C2C;
 
         long total = shape.Aggregate(1L, (a, s) => a * s);
         await using var fft = new Fft(shape, axes, opts, stream, doublePrecision: true);
 
         var output = new DeviceBuffer<Complex>(total);
-        fft.ResetOperand(input.PointerAsInt, output.PointerAsInt);
-        await fft.PlanAsync(ct).ConfigureAwait(false);
-        await fft.ExecuteAsync(FftDirection.Forward, ct).ConfigureAwait(false);
-        await fft.SynchronizeAsync(ct).ConfigureAwait(false);
-        return output;
+        try
+        {
+            fft.ResetOperand(input.PointerAsInt, output.PointerAsInt);
+            await fft.PlanAsync(ct).ConfigureAwait(false);
+            await fft.ExecuteAsync(FftDirection.Forward, ct).ConfigureAwait(false);
+            await fft.SynchronizeAsync(ct).ConfigureAwait(false);
+            return output;
+        }
+        catch
+        {
+            output.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -430,7 +452,8 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         FftOptions? options = null,
         CancellationToken ct = default)
     {
-        var opts = options ?? new FftOptions { FftType = FftType.C2C };
+        var opts = options?.Clone() ?? new FftOptions();
+        opts.FftType = FftType.C2C;
         return FftInternalAsync(input, shape, axes, stream, opts, FftDirection.Inverse, true, ct);
     }
 
@@ -442,25 +465,61 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         long total = shape.Aggregate(1L, (a, s) => a * s);
         await using var fft = new Fft(shape, axes, opts, stream, doublePrecision);
         var output = new DeviceBuffer<Complex>(total);
-        fft.ResetOperand(input.PointerAsInt, output.PointerAsInt);
-        await fft.PlanAsync(ct).ConfigureAwait(false);
-        await fft.ExecuteAsync(direction, ct).ConfigureAwait(false);
-        await fft.SynchronizeAsync(ct).ConfigureAwait(false);
-        return output;
+        try
+        {
+            fft.ResetOperand(input.PointerAsInt, output.PointerAsInt);
+            await fft.PlanAsync(ct).ConfigureAwait(false);
+            await fft.ExecuteAsync(direction, ct).ConfigureAwait(false);
+            await fft.SynchronizeAsync(ct).ConfigureAwait(false);
+            return output;
+        }
+        catch
+        {
+            output.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
-    /// Performs a real-to-complex (forward half-spectrum) FFT.
-    /// The output has shape <c>[..., n/2+1]</c> complex elements along the last transform axis.
+    /// Performs a real-to-complex (forward half-spectrum) FFT in <b>double precision</b>.
+    /// The output has <c>n/2+1</c> complex elements along the last transform axis.
     /// </summary>
-    /// <param name="input">Device buffer of <see cref="float"/> real elements.</param>
-    /// <param name="shape">Full tensor shape of the real input (all dimensions, including batch).</param>
+    /// <param name="input">Device buffer of <see cref="double"/> real elements.</param>
+    /// <param name="shape">Full tensor shape of the real input (all dimensions, including batch), row-major.</param>
     /// <param name="axes">FFT axes; <c>null</c> = all axes.</param>
     /// <param name="stream">Optional external stream.</param>
     /// <param name="options">Optional options; <see cref="FftOptions.FftType"/> is overridden to <see cref="FftType.R2C"/>.</param>
     /// <param name="ct">Cancellation token.</param>
     /// <returns>Device buffer of <see cref="Complex"/> elements (half-spectrum).</returns>
     public static async Task<DeviceBuffer<Complex>> RFftAsync(
+        DeviceBuffer<double> input,
+        long[] shape,
+        int[]? axes = null,
+        CudaStream? stream = null,
+        FftOptions? options = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(shape);
+        var (opts, resolvedAxes, outputElements) = PrepareRealToComplex(input.Length, shape, axes, options);
+        return await RunTransformAsync<Complex>(
+            shape, resolvedAxes, opts, stream, doublePrecision: true,
+            input.PointerAsInt, outputElements, FftDirection.Forward, ct).ConfigureAwait(false);
+    }
+
+    /// <summary>
+    /// Performs a real-to-complex (forward half-spectrum) FFT in <b>single precision</b>. .NET has no single-precision
+    /// complex type, so the half-spectrum is returned as interleaved <c>(re, im)</c> floats: element <c>k</c> of the
+    /// spectrum is <c>output[2k]</c> + i·<c>output[2k+1]</c>, and the buffer holds <c>2 · (number of complex elements)</c> floats.
+    /// </summary>
+    /// <param name="input">Device buffer of <see cref="float"/> real elements.</param>
+    /// <param name="shape">Full tensor shape of the real input (all dimensions, including batch), row-major.</param>
+    /// <param name="axes">FFT axes; <c>null</c> = all axes.</param>
+    /// <param name="stream">Optional external stream.</param>
+    /// <param name="options">Optional options; <see cref="FftOptions.FftType"/> is overridden to <see cref="FftType.R2C"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Device buffer of interleaved single-precision complex values.</returns>
+    public static async Task<DeviceBuffer<float>> RFftAsync(
         DeviceBuffer<float> input,
         long[] shape,
         int[]? axes = null,
@@ -470,50 +529,28 @@ public sealed class Fft : IAsyncDisposable, IDisposable
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(shape);
-
-        var opts = options is null ? new FftOptions() : new FftOptions
-        {
-            InPlace = options.InPlace,
-            LastAxisParity = options.LastAxisParity,
-            DeviceId = options.DeviceId,
-            Blocking = options.Blocking,
-        };
-        opts.FftType = FftType.R2C;
-
-        // Compute half-spectrum output size: last axis shrinks to n/2+1
-        int[] resolvedAxes = axes is null
-            ? [.. Enumerable.Range(0, shape.Length)]
-            : NormalizeAxes(axes, shape.Length);
-        long outputElements = ComputeR2COutputSize(shape, resolvedAxes);
-
-        await using var fft = new Fft(shape, resolvedAxes, opts, stream, doublePrecision: false);
-        var output = new DeviceBuffer<Complex>(outputElements);
-        fft.ResetOperand(input.PointerAsInt, output.PointerAsInt);
-        await fft.PlanAsync(ct).ConfigureAwait(false);
-        await fft.ExecuteAsync(FftDirection.Forward, ct).ConfigureAwait(false);
-        await fft.SynchronizeAsync(ct).ConfigureAwait(false);
-        return output;
+        var (opts, resolvedAxes, outputElements) = PrepareRealToComplex(input.Length, shape, axes, options);
+        return await RunTransformAsync<float>(
+            shape, resolvedAxes, opts, stream, doublePrecision: false,
+            input.PointerAsInt, 2 * outputElements, FftDirection.Forward, ct).ConfigureAwait(false);
     }
 
     /// <summary>
-    /// Performs a complex-to-real (inverse half-spectrum) FFT.
-    /// The output contains the reconstructed real signal.
+    /// Performs a complex-to-real (inverse half-spectrum) FFT in <b>double precision</b>.
+    /// The output contains the reconstructed real signal. The result is not scaled unless
+    /// <see cref="FftOptions.Normalization"/> says so.
     /// </summary>
     /// <param name="input">Device buffer of <see cref="Complex"/> half-spectrum elements.</param>
     /// <param name="outputShape">
-    /// Full shape of the desired real output tensor (all dimensions, including batch).
-    /// The last transform-axis size must equal <c>2*(m-1)</c> (even) or <c>2*m-1</c> (odd)
-    /// where <c>m</c> is the last axis size of <paramref name="input"/>.
+    /// Full shape of the desired real output tensor (all dimensions, including batch), row-major. The last
+    /// transform-axis size <c>n</c> determines the half-spectrum length <c>n/2+1</c> that <paramref name="input"/> must hold.
     /// </param>
     /// <param name="axes">FFT axes; <c>null</c> = all axes.</param>
     /// <param name="stream">Optional external stream.</param>
-    /// <param name="options">
-    /// Optional options; <see cref="FftOptions.FftType"/> is overridden to <see cref="FftType.C2R"/>.
-    /// Set <see cref="FftOptions.LastAxisParity"/> if the output last-axis size is odd.
-    /// </param>
+    /// <param name="options">Optional options; <see cref="FftOptions.FftType"/> is overridden to <see cref="FftType.C2R"/>.</param>
     /// <param name="ct">Cancellation token.</param>
-    /// <returns>Device buffer of <see cref="float"/> reconstructed real elements.</returns>
-    public static async Task<DeviceBuffer<float>> IRFftAsync(
+    /// <returns>Device buffer of <see cref="double"/> reconstructed real elements.</returns>
+    public static async Task<DeviceBuffer<double>> IRFftAsync(
         DeviceBuffer<Complex> input,
         long[] outputShape,
         int[]? axes = null,
@@ -523,26 +560,93 @@ public sealed class Fft : IAsyncDisposable, IDisposable
     {
         ArgumentNullException.ThrowIfNull(input);
         ArgumentNullException.ThrowIfNull(outputShape);
+        var (opts, resolvedAxes, outputElements) = PrepareComplexToReal(input.Length, outputShape, axes, options, 1);
+        return await RunTransformAsync<double>(
+            outputShape, resolvedAxes, opts, stream, doublePrecision: true,
+            input.PointerAsInt, outputElements, FftDirection.Inverse, ct).ConfigureAwait(false);
+    }
 
-        var opts = options is null ? new FftOptions() : new FftOptions
+    /// <summary>
+    /// Performs a complex-to-real (inverse half-spectrum) FFT in <b>single precision</b>. The half-spectrum is
+    /// supplied as interleaved <c>(re, im)</c> floats (see <see cref="RFftAsync(DeviceBuffer{float}, long[], int[], CudaStream, FftOptions, CancellationToken)"/>).
+    /// </summary>
+    /// <param name="input">Device buffer of interleaved single-precision complex half-spectrum values.</param>
+    /// <param name="outputShape">Full shape of the desired real output tensor, row-major.</param>
+    /// <param name="axes">FFT axes; <c>null</c> = all axes.</param>
+    /// <param name="stream">Optional external stream.</param>
+    /// <param name="options">Optional options; <see cref="FftOptions.FftType"/> is overridden to <see cref="FftType.C2R"/>.</param>
+    /// <param name="ct">Cancellation token.</param>
+    /// <returns>Device buffer of <see cref="float"/> reconstructed real elements.</returns>
+    public static async Task<DeviceBuffer<float>> IRFftAsync(
+        DeviceBuffer<float> input,
+        long[] outputShape,
+        int[]? axes = null,
+        CudaStream? stream = null,
+        FftOptions? options = null,
+        CancellationToken ct = default)
+    {
+        ArgumentNullException.ThrowIfNull(input);
+        ArgumentNullException.ThrowIfNull(outputShape);
+        var (opts, resolvedAxes, outputElements) = PrepareComplexToReal(input.Length, outputShape, axes, options, 2);
+        return await RunTransformAsync<float>(
+            outputShape, resolvedAxes, opts, stream, doublePrecision: false,
+            input.PointerAsInt, outputElements, FftDirection.Inverse, ct).ConfigureAwait(false);
+    }
+
+    private static (FftOptions Options, int[] Axes, long OutputElements) PrepareRealToComplex(
+        long inputLength, long[] shape, int[]? axes, FftOptions? options)
+    {
+        int[] resolvedAxes = axes is null
+            ? [.. Enumerable.Range(0, shape.Length)]
+            : NormalizeAxes(axes, shape.Length);
+        long inputElements = Product(shape);
+        if (inputLength < inputElements)
         {
-            InPlace = options.InPlace,
-            LastAxisParity = options.LastAxisParity,
-            DeviceId = options.DeviceId,
-            Blocking = options.Blocking,
-        };
+            throw new ArgumentException($"The input holds {inputLength} elements but shape [{string.Join(", ", shape)}] needs {inputElements}.", nameof(shape));
+        }
+
+        var opts = options?.Clone() ?? new FftOptions();
+        opts.FftType = FftType.R2C;
+        return (opts, resolvedAxes, ComputeR2COutputSize(shape, resolvedAxes));
+    }
+
+    private static (FftOptions Options, int[] Axes, long OutputElements) PrepareComplexToReal(
+        long inputLength, long[] outputShape, int[]? axes, FftOptions? options, int scalarsPerElement)
+    {
+        int[] resolvedAxes = axes is null
+            ? [.. Enumerable.Range(0, outputShape.Length)]
+            : NormalizeAxes(axes, outputShape.Length);
+        long required = ComputeR2COutputSize(outputShape, resolvedAxes) * scalarsPerElement;
+        if (inputLength < required)
+        {
+            throw new ArgumentException($"The half-spectrum input holds {inputLength} values but {required} are required for output shape [{string.Join(", ", outputShape)}].", nameof(outputShape));
+        }
+
+        var opts = options?.Clone() ?? new FftOptions();
         opts.FftType = FftType.C2R;
+        return (opts, resolvedAxes, Product(outputShape));
+    }
 
-        long outputElements = outputShape.Aggregate(1L, (a, s) => a * s);
-
-        // The plan uses the *output* (real) shape for C2R
-        await using var fft = new Fft(outputShape, axes, opts, stream, doublePrecision: false);
-        var output = new DeviceBuffer<float>(outputElements);
-        fft.ResetOperand(input.PointerAsInt, output.PointerAsInt);
-        await fft.PlanAsync(ct).ConfigureAwait(false);
-        await fft.ExecuteAsync(FftDirection.Inverse, ct).ConfigureAwait(false);
-        await fft.SynchronizeAsync(ct).ConfigureAwait(false);
-        return output;
+    private static async Task<DeviceBuffer<TOut>> RunTransformAsync<TOut>(
+        long[] planShape, int[] axes, FftOptions opts, CudaStream? stream, bool doublePrecision,
+        nint inputPointer, long outputLength, FftDirection direction, CancellationToken ct)
+        where TOut : unmanaged, INumberBase<TOut>
+    {
+        await using var fft = new Fft(planShape, axes, opts, stream, doublePrecision);
+        var output = new DeviceBuffer<TOut>(outputLength);
+        try
+        {
+            fft.ResetOperand(inputPointer, output.PointerAsInt);
+            await fft.PlanAsync(ct).ConfigureAwait(false);
+            await fft.ExecuteAsync(direction, ct).ConfigureAwait(false);
+            await fft.SynchronizeAsync(ct).ConfigureAwait(false);
+            return output;
+        }
+        catch
+        {
+            output.Dispose();
+            throw;
+        }
     }
 
     private static long ComputeR2COutputSize(long[] shape, int[] axes)
@@ -590,6 +694,15 @@ public sealed class Fft : IAsyncDisposable, IDisposable
         }
 
         _disposed = true;
+
+        try
+        {
+            _ownedStream.Synchronize(); // queued work may still use the plan and workspace
+        }
+        catch (Exception)
+        {
+            // The context may already be broken; keep releasing resources.
+        }
 
         if (_blas != 0)
         {

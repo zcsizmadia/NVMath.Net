@@ -61,7 +61,7 @@ Tensors use a packed **column-major** layout (the first mode varies fastest). Mo
 |---|---|---|
 | `TensorPermutation(long[] extentA, int[] modeA, int[] modeB, TensorDataType dataType = Float32, CuTensorOperator opA = Identity, ...)` | `B[modeB] = alpha · opA(A[modeA])` | `modeB` is a reordering of `modeA` (generalised transpose). `Execute(pA, pB, alpha)` / `ExecuteAsync<T>(a, b, alpha)`. |
 | `ElementwiseBinary(extentA, modeA, extentC, modeC, extentD, modeD, dataType, opA, opC, opAC = Add, ...)` | `D = opAC(alpha · opA(A), gamma · opC(C))` | Only A may be permuted: C must have the same modes and extents as D (cuTENSOR restriction). `Execute(pA, pC, pD, alpha, gamma)`. |
-| `TensorReduction(extentA, modeA, extentD, modeD, dataType, opReduce = Add, opA = Identity, opC = Identity, ...)` | `D = alpha · opReduce(opA(A)) + beta · opC(C)` | Reduces the modes of A that are not in `modeD` (a subset of `modeA`). `opReduce` is `Add`, `Mul`, `Max` or `Min`. `Execute(pA, pD, alpha, beta)` works in place on D; `Execute(pA, pC, pD, ...)` uses a separate C. |
+| `TensorReduction(extentA, modeA, extentD, modeD, dataType, opReduce = Add, opA = Identity, opC = Identity, ...)` | `D = alpha · opReduce(opA(A)) + beta · opC(C)` | Reduces the modes of A that are not in `modeD` (a subset of `modeA`). `opReduce` is `Add`, `Mul`, `Max` or `Min`. `ExecuteInPlace(pA, pD, alpha, beta)` works in place on D; `Execute(pA, pC, pD, ...)` uses a separate C. |
 
 ```csharp
 using var transpose = new TensorPermutation([2, 3], [0, 1], [1, 0]);   // 2×3 -> 3×2

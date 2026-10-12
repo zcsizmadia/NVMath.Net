@@ -119,7 +119,7 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
     internal static nint ResolveComputeDesc(TensorDataType dt) =>
         dt switch
         {
-            TensorDataType.Float16    => CuTensorNative.ComputeDesc16F,
+            TensorDataType.Float16    => CuTensorNative.ComputeDesc32F, // cuTENSOR pairs 16F data with 32F compute and float scalars
             TensorDataType.Float32    => CuTensorNative.ComputeDesc32F,
             TensorDataType.Float64    => CuTensorNative.ComputeDesc64F,
             TensorDataType.Complex64  => CuTensorNative.ComputeDesc32F,
@@ -221,10 +221,10 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
     private unsafe void RunContraction(nint pA, nint pB, nint pC, nint pD, double alpha, double beta)
     {
         // cuTENSOR reads the scalars with the compute type (half, float or double).
-        byte* a = stackalloc byte[8];
-        byte* b = stackalloc byte[8];
-        TensorScalars.Encode(alpha, _computeDesc, a);
-        TensorScalars.Encode(beta, _computeDesc, b);
+        Span<byte> aStore = stackalloc byte[AlignedScalar.StorageSize];
+        Span<byte> bStore = stackalloc byte[AlignedScalar.StorageSize];
+        byte* a = TensorScalars.Store(aStore, alpha, _computeDesc);
+        byte* b = TensorScalars.Store(bStore, beta, _computeDesc);
         CuTensorNative.Contract(
             _handle, _plan,
             a, (void*)pA, (void*)pB,
@@ -269,6 +269,15 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
         }
 
         _disposed = true;
+
+        try
+        {
+            _ownedStream.Synchronize(); // queued work may still use the plan and workspace
+        }
+        catch (Exception)
+        {
+            // The context may already be broken; keep releasing resources.
+        }
 
         if (_plan    != default)
         {

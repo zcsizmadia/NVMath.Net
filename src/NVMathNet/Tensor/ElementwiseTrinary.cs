@@ -164,12 +164,12 @@ public sealed class ElementwiseTrinary : IAsyncDisposable, IDisposable
 
     private unsafe void RunEwTrinary(nint pA, nint pB, nint pC, nint pD, double alpha, double beta, double gamma)
     {
-        byte* a = stackalloc byte[8];
-        byte* b = stackalloc byte[8];
-        byte* g = stackalloc byte[8];
-        TensorScalars.Encode(alpha, _computeDesc, a);
-        TensorScalars.Encode(beta, _computeDesc, b);
-        TensorScalars.Encode(gamma, _computeDesc, g);
+        Span<byte> aStore = stackalloc byte[AlignedScalar.StorageSize];
+        Span<byte> bStore = stackalloc byte[AlignedScalar.StorageSize];
+        Span<byte> gStore = stackalloc byte[AlignedScalar.StorageSize];
+        byte* a = TensorScalars.Store(aStore, alpha, _computeDesc);
+        byte* b = TensorScalars.Store(bStore, beta, _computeDesc);
+        byte* g = TensorScalars.Store(gStore, gamma, _computeDesc);
         CuTensorNative.ElementwiseTrinaryExecute(
             _handle, _plan,
             a, (void*)pA,
@@ -214,6 +214,15 @@ public sealed class ElementwiseTrinary : IAsyncDisposable, IDisposable
         }
 
         _disposed = true;
+
+        try
+        {
+            _ownedStream.Synchronize(); // queued work may still use the plan and workspace
+        }
+        catch (Exception)
+        {
+            // The context may already be broken; keep releasing resources.
+        }
 
         if (_plan   != default)
         {

@@ -36,18 +36,21 @@ public sealed class FftOptions
     public FftType? FftType { get; set; }
 
     /// <summary>
-    /// If <c>true</c>, the result overwrites the input buffer (C2C only).
+    /// If <c>true</c>, the result overwrites the input buffer. Supported for <see cref="FftType.C2C"/> only: in-place
+    /// real transforms need a padded real layout, so R2C/C2R with this option throw <see cref="NotSupportedException"/>.
     /// Default: <c>false</c>.
     /// </summary>
     public bool InPlace { get; set; }
 
     /// <summary>
+    /// Reserved; currently not used by the library (the logical size of a C2R transform is given by the output shape).
     /// For C2R FFTs: whether the logical last-axis size is even or odd.
     /// Default: <see cref="LastAxisParity.Even"/>.
     /// </summary>
     public LastAxisParity LastAxisParity { get; set; } = LastAxisParity.Even;
 
     /// <summary>
+    /// Reserved; currently not used by the library (operands must already be on the device).
     /// CUDA device to use when input resides on the host.
     /// Default: device 0.
     /// </summary>
@@ -66,6 +69,9 @@ public sealed class FftOptions
     /// multiplied by the signal size N.
     /// </summary>
     public FftNormalization Normalization { get; set; } = FftNormalization.None;
+
+    /// <summary>A shallow copy, so callers' options objects are never mutated or read lazily.</summary>
+    internal FftOptions Clone() => (FftOptions)MemberwiseClone();
 }
 
 /// <summary>Output scaling modes, named after NumPy's <c>norm</c> argument.</summary>
