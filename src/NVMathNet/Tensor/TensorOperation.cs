@@ -4,6 +4,7 @@
 using System.Numerics;
 
 using NVMathNet.Interop;
+using NVMathNet.Memory;
 
 namespace NVMathNet.Tensor;
 
@@ -18,7 +19,7 @@ public abstract class TensorOperation : IAsyncDisposable, IDisposable
     private readonly bool _streamOwned;
     private nint _opDesc;
     private nint _plan;
-    private nint _workspace;
+    private Workspace _workspace;
     private bool _disposed;
 
     /// <summary>The cuTENSOR handle.</summary>
@@ -40,7 +41,7 @@ public abstract class TensorOperation : IAsyncDisposable, IDisposable
     internal ulong WorkspaceSize { get; private set; }
 
     /// <summary>Pointer to the workspace (0 when none is needed).</summary>
-    internal nint WorkspacePointer => _workspace;
+    internal nint WorkspacePointer => _workspace.PointerAsInt;
 
     private readonly bool _blocking;
 
@@ -78,13 +79,7 @@ public abstract class TensorOperation : IAsyncDisposable, IDisposable
             CuTensorNative.DestroyPlanPreference(pref);
         }
 
-        unsafe
-        {
-            if (WorkspaceSize > 0)
-            {
-                _workspace = (nint)CudaRuntime.Malloc((nuint)WorkspaceSize);
-            }
-        }
+        _workspace = new Workspace((nuint)WorkspaceSize);
     }
 
     /// <summary>Validates that mode labels are unique and match the tensor rank.</summary>
@@ -161,10 +156,7 @@ public abstract class TensorOperation : IAsyncDisposable, IDisposable
             CuTensorNative.DestroyTensorDescriptor(d);
         }
 
-        if (_workspace != 0)
-        {
-            unsafe { CudaRuntime.Free((void*)_workspace); }
-        }
+        _workspace.Dispose();
 
         if (Handle != 0)
         {

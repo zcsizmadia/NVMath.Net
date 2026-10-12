@@ -93,4 +93,36 @@ public sealed class MemoryTests
         using var cache = new CachingMemoryManager();
         await Assert.That(() => cache.Free(12345)).Throws<ArgumentException>();
     }
+
+    [Test]
+    [NotInParallel("global-device-memory")]
+    public async Task InternalWorkspaces_UseTheDefaultManager_AndAreReturned()
+    {
+        var counting = new CountingManager();
+
+        // Operands come from the plain cudaMalloc manager so only internal scratch memory is counted.
+        var plain = CudaMallocMemoryManager.Instance;
+        var dRow = new DeviceBuffer<int>(3, plain);
+        var dCol = new DeviceBuffer<int>(3, plain);
+        var dVal = new DeviceBuffer<float>(3, plain);
+        dRow.CopyFrom(new[] { 0, 2, 3 }.AsSpan());       // [[1,2],[0,3]]
+        dCol.CopyFrom(new[] { 0, 1, 1 }.AsSpan());
+        dVal.CopyFrom(new float[] { 1, 2, 3 }.AsSpan());
+        using var a = new NVMathNet.Sparse.CsrMatrix<float>(2, 2, dRow, dCol, dVal);
+
+        var previous = DeviceMemory.Default;
+        DeviceMemory.Default = counting;
+        try
+        {
+            using var c = await NVMathNet.Sparse.SparseLinearAlgebra.SpGemmAsync(a, a);
+            await Assert.That(counting.Allocations).IsGreaterThan(0);
+        }
+        finally
+        {
+            DeviceMemory.Default = previous;
+        }
+
+        // Scratch buffers must have been returned to the manager that provided them.
+        await Assert.That(counting.Frees).IsGreaterThanOrEqualTo(1);
+    }
 }

@@ -4,6 +4,7 @@
 using System.Numerics;
 
 using NVMathNet.Interop;
+using NVMathNet.Memory;
 
 namespace NVMathNet.Sparse;
 
@@ -75,6 +76,7 @@ public static partial class SparseLinearAlgebra
         var handle = CreateHandle(s);
         nint vecX = 0, vecY = 0, descr = 0;
         void* buffer = null;
+        Workspace ws = default;
         try
         {
             CuSparseNative.SpMatSetAttribute(matrix.Descriptor, CuSparseSpMatAttribute.FillMode, (int)triangle);
@@ -84,7 +86,8 @@ public static partial class SparseLinearAlgebra
             descr = CuSparseNative.SpSVCreateDescr();
 
             nuint size = CuSparseNative.SpSVBufferSize(handle, opA, &alpha, matrix.Descriptor, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
-            buffer = size > 0 ? CudaRuntime.Malloc(size) : null;
+            ws = new Workspace(size);
+            buffer = ws.Pointer;
             CuSparseNative.SpSVAnalysis(handle, opA, &alpha, matrix.Descriptor, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr, buffer);
             CuSparseNative.SpSVSolve(handle, opA, &alpha, matrix.Descriptor, vecX, vecY, cudaType, CuSparseSpSVAlg.Default, descr);
             s.Synchronize();
@@ -106,10 +109,7 @@ public static partial class SparseLinearAlgebra
                 CuSparseNative.DestroyDnVec(vecY);
             }
 
-            if (buffer != null)
-            {
-                CudaRuntime.Free(buffer);
-            }
+            ws.Dispose();
 
             CuSparseNative.Destroy(handle);
         }
@@ -165,6 +165,7 @@ public static partial class SparseLinearAlgebra
         var handle = CreateHandle(s);
         nint matB = 0, matC = 0, descr = 0;
         void* buffer = null;
+        Workspace ws = default;
         try
         {
             CuSparseNative.SpMatSetAttribute(matrix.Descriptor, CuSparseSpMatAttribute.FillMode, (int)triangle);
@@ -174,7 +175,8 @@ public static partial class SparseLinearAlgebra
             descr = CuSparseNative.SpSMCreateDescr();
 
             nuint size = CuSparseNative.SpSMBufferSize(handle, opA, CuSparseOperation.None, &alpha, matrix.Descriptor, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
-            buffer = size > 0 ? CudaRuntime.Malloc(size) : null;
+            ws = new Workspace(size);
+            buffer = ws.Pointer;
             CuSparseNative.SpSMAnalysis(handle, opA, CuSparseOperation.None, &alpha, matrix.Descriptor, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr, buffer);
             CuSparseNative.SpSMSolve(handle, opA, CuSparseOperation.None, &alpha, matrix.Descriptor, matB, matC, cudaType, CuSparseSpSMAlg.Default, descr);
             s.Synchronize();
@@ -196,10 +198,7 @@ public static partial class SparseLinearAlgebra
                 CuSparseNative.DestroyDnMat(matC);
             }
 
-            if (buffer != null)
-            {
-                CudaRuntime.Free(buffer);
-            }
+            ws.Dispose();
 
             CuSparseNative.Destroy(handle);
         }
@@ -246,13 +245,15 @@ public static partial class SparseLinearAlgebra
         var handle = CreateHandle(s);
         nint matA = 0, matB = 0;
         void* buffer = null;
+        Workspace ws = default;
         try
         {
             matA = CuSparseNative.CreateDnMat(m, k, m, a.Pointer, cudaType, ColMajor);
             matB = CuSparseNative.CreateDnMat(k, n, k, b.Pointer, cudaType, ColMajor);
 
             nuint size = CuSparseNative.SddmmBufferSize(handle, CuSparseOperation.None, CuSparseOperation.None, &alpha, matA, matB, &beta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default);
-            buffer = size > 0 ? CudaRuntime.Malloc(size) : null;
+            ws = new Workspace(size);
+            buffer = ws.Pointer;
             CuSparseNative.SddmmPreprocess(handle, CuSparseOperation.None, CuSparseOperation.None, &alpha, matA, matB, &beta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default, buffer);
             CuSparseNative.Sddmm(handle, CuSparseOperation.None, CuSparseOperation.None, &alpha, matA, matB, &beta, c.Descriptor, cudaType, CuSparseSddmmAlg.Default, buffer);
             s.Synchronize();
@@ -269,10 +270,7 @@ public static partial class SparseLinearAlgebra
                 CuSparseNative.DestroyDnMat(matB);
             }
 
-            if (buffer != null)
-            {
-                CudaRuntime.Free(buffer);
-            }
+            ws.Dispose();
 
             CuSparseNative.Destroy(handle);
         }
@@ -318,6 +316,7 @@ public static partial class SparseLinearAlgebra
         var handle = CreateHandle(s);
         nint matC = 0, descr = 0;
         void* buf1 = null, buf2 = null;
+        Workspace ws1 = default, ws2 = default;
         DeviceBuffer<int>? offsets = null, cols = null;
         DeviceBuffer<T>? vals = null;
         try
@@ -330,12 +329,14 @@ public static partial class SparseLinearAlgebra
 
             nuint size1 = 0;
             CuSparseNative.SpGemmWorkEstimation(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size1, null);
-            buf1 = size1 > 0 ? CudaRuntime.Malloc(size1) : null;
+            ws1 = new Workspace(size1);
+            buf1 = ws1.Pointer;
             CuSparseNative.SpGemmWorkEstimation(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size1, buf1);
 
             nuint size2 = 0;
             CuSparseNative.SpGemmCompute(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size2, null);
-            buf2 = size2 > 0 ? CudaRuntime.Malloc(size2) : null;
+            ws2 = new Workspace(size2);
+            buf2 = ws2.Pointer;
             CuSparseNative.SpGemmCompute(handle, op, op, &alpha, a.Descriptor, b.Descriptor, &beta, matC, cudaType, alg, descr, ref size2, buf2);
 
             CuSparseNative.SpMatGetSize(matC, out long rows, out long colCount, out long nnz);
@@ -373,15 +374,9 @@ public static partial class SparseLinearAlgebra
                 CuSparseNative.DestroySpMat(matC);
             }
 
-            if (buf1 != null)
-            {
-                CudaRuntime.Free(buf1);
-            }
+            ws1.Dispose();
 
-            if (buf2 != null)
-            {
-                CudaRuntime.Free(buf2);
-            }
+            ws2.Dispose();
 
             CuSparseNative.Destroy(handle);
         }

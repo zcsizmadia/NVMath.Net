@@ -135,3 +135,5 @@ using var cache = new CachingMemoryManager();
 DeviceMemory.Default = cache;           // all new buffers now reuse blocks
 using var a = new DeviceBuffer<float>(1 << 20);
 ```
+
+Library-internal scratch memory (cuFFT, cuBLASLt, cuTENSOR, cuSPARSE and Csr transpose workspaces) is also allocated through `DeviceMemory.Default`, so a pooling manager covers it, not just `DeviceBuffer<T>`. cuDSS and cuSOLVER allocate their own internal memory.

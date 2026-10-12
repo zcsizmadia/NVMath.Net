@@ -4,6 +4,7 @@
 using System.Numerics;
 
 using NVMathNet.Interop;
+using NVMathNet.Memory;
 
 namespace NVMathNet.Tensor;
 
@@ -36,6 +37,7 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
     // ── Workspace ─────────────────────────────────────────────────────────────
 
     private nint   _workspacePtr;
+    private Workspace _workspace;
     private ulong  _workspaceSize;
 
     private readonly TensorContractionOptions _options;
@@ -159,7 +161,8 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
 
         if (_workspaceSize > 0)
         {
-            _workspacePtr = (nint)CudaRuntime.Malloc((nuint)_workspaceSize);
+            _workspace = new Workspace((nuint)_workspaceSize);
+            _workspacePtr = _workspace.PointerAsInt;
         }
 
         _plan = CuTensorNative.CreatePlan(_handle, _opDesc, _planPref, _workspaceSize);
@@ -309,7 +312,7 @@ public sealed class TensorContraction : IAsyncDisposable, IDisposable
 
         if (_workspacePtr != 0)
         {
-            CudaRuntime.Free((void*)_workspacePtr);
+            _workspace.Dispose();
             _workspacePtr = 0;
         }
 
