@@ -47,3 +47,5 @@ Dense matrices passed to SpMM use **column-major** layout.
 
 `CsrMatrix<T>.Transpose()` returns a new CSR matrix holding the transpose (CSR→CSC conversion).
 The generic-API methods take scalars as `T` (matching the matrix element type); supported element types are `float`, `double` and `Half`.
+| `Task SpMVAsync<T>(CooMatrix<T> A, ...)` / `Task SpMVAsync<T>(BsrMatrix<T> A, ...)` | SpMV overloads for COO and BSR matrices (same parameters as the CSR version). |
+| `Task SpMMAsync<T>(CooMatrix<T> A, ...)` / `Task SpMMAsync<T>(BsrMatrix<T> A, ...)` | SpMM overloads for COO and BSR matrices. |

@@ -333,7 +333,7 @@ public static unsafe partial class CuSparseNative
         Check(_createBsr.Value(&d, brows, bcols, bnnz, rowBlockDim, colBlockDim,
             bsrRowOffsets, bsrColInd, bsrValues,
             rowOffType, colIndType, idxBase, valType,
-            columnMajorBlocks ? 1 : 0), "cusparseCreateBsr");
+            columnMajorBlocks ? 1 /* CUSPARSE_ORDER_COL */ : 2 /* CUSPARSE_ORDER_ROW */), "cusparseCreateBsr");
         return d;
     }
 
@@ -361,7 +361,7 @@ public static unsafe partial class CuSparseNative
     /// <param name="ld">Leading dimension of the matrix.</param>
     /// <param name="values">Pointer to the matrix values in device memory.</param>
     /// <param name="valType">Data type of the matrix elements.</param>
-    /// <param name="order">Storage order: 0 = column-major, 1 = row-major.</param>
+    /// <param name="order">Storage order: 1 = column-major (CUSPARSE_ORDER_COL), 2 = row-major (CUSPARSE_ORDER_ROW).</param>
     public static nint CreateDnMat(long rows, long cols, long ld, void* values, CudaDataType valType, int order)
     {
         nint d;

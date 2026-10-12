@@ -379,4 +379,98 @@ public sealed class SparseTests
             await Assert.That(Math.Abs(r[i] - (10.0 * hX[i] + 3.0))).IsLessThan(1e-9);
         }
     }
+
+    // ── COO / BSR SpMV and SpMM ──────────────────────────────────────────────
+
+    // A = [[1,0,2],[0,3,0]] in COO
+    private static CooMatrix<float> MakeCoo()
+    {
+        var dRow = new DeviceBuffer<int>(3);
+        var dCol = new DeviceBuffer<int>(3);
+        var dVal = new DeviceBuffer<float>(3);
+        dRow.CopyFrom(new[] { 0, 0, 1 }.AsSpan());
+        dCol.CopyFrom(new[] { 0, 2, 1 }.AsSpan());
+        dVal.CopyFrom(new float[] { 1, 2, 3 }.AsSpan());
+        return new CooMatrix<float>(2, 3, dRow, dCol, dVal);
+    }
+
+    [Test]
+    public async Task SpMV_Coo_MatchesDense()
+    {
+        using var a = MakeCoo();
+        using var x = new DeviceBuffer<float>(3);
+        using var y = new DeviceBuffer<float>(2);
+        x.CopyFrom(new float[] { 1, 2, 3 }.AsSpan());
+        y.Clear();
+
+        await SparseLinearAlgebra.SpMVAsync(a, x, y);
+
+        float[] r = y.ToArray();
+        await Assert.That(Math.Abs(r[0] - 7f)).IsLessThan(1e-4f);
+        await Assert.That(Math.Abs(r[1] - 6f)).IsLessThan(1e-4f);
+    }
+
+    [Test]
+    public async Task SpMV_Coo_Transpose_MatchesDense()
+    {
+        using var a = MakeCoo();
+        using var x = new DeviceBuffer<float>(2);
+        using var y = new DeviceBuffer<float>(3);
+        x.CopyFrom(new float[] { 1, 1 }.AsSpan());
+        y.Clear();
+
+        await SparseLinearAlgebra.SpMVAsync(a, x, y, transpose: true);
+
+        float[] r = y.ToArray(); // A^T [1,1] = [1,3,2]
+        float[] expected = [1, 3, 2];
+        for (int i = 0; i < 3; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - expected[i])).IsLessThan(1e-4f);
+        }
+    }
+
+    [Test]
+    public async Task SpMM_Coo_MatchesDense()
+    {
+        using var a = MakeCoo();
+        using var b = new DeviceBuffer<float>(6);
+        using var c = new DeviceBuffer<float>(4);
+        b.CopyFrom(new float[] { 1, 2, 3, 0, 1, 0 }.AsSpan()); // col-major 3x2: cols [1,2,3] and [0,1,0]
+        c.Clear();
+
+        await SparseLinearAlgebra.SpMMAsync(a, b, c, n: 2);
+
+        float[] r = c.ToArray(); // col-major 2x2: [7,6] and [0,3]
+        float[] expected = [7, 6, 0, 3];
+        for (int i = 0; i < 4; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - expected[i])).IsLessThan(1e-4f);
+        }
+    }
+
+    [Test]
+    public async Task SpMV_Bsr_MatchesDense()
+    {
+        // 4x4 block-diagonal with 2x2 row-major blocks [[1,2],[3,4]] and [[5,6],[7,8]].
+        var dRow = new DeviceBuffer<int>(3);
+        var dCol = new DeviceBuffer<int>(2);
+        var dVal = new DeviceBuffer<float>(8);
+        dRow.CopyFrom(new[] { 0, 1, 2 }.AsSpan());
+        dCol.CopyFrom(new[] { 0, 1 }.AsSpan());
+        dVal.CopyFrom(new float[] { 1, 2, 3, 4, 5, 6, 7, 8 }.AsSpan());
+        using var a = new BsrMatrix<float>(2, 2, 2, 2, dRow, dCol, dVal);
+        using var x = new DeviceBuffer<float>(4);
+        using var y = new DeviceBuffer<float>(4);
+        x.CopyFrom(new float[] { 1, 1, 1, 1 }.AsSpan());
+        y.Clear();
+
+        await SparseLinearAlgebra.SpMVAsync(a, x, y);
+
+        float[] r = y.ToArray();
+        float[] expected = [3, 7, 11, 15];
+        for (int i = 0; i < 4; i++)
+        {
+            await Assert.That(Math.Abs(r[i] - expected[i])).IsLessThan(1e-4f);
+        }
+    }
 }
